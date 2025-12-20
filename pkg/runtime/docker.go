@@ -57,8 +57,15 @@ func (r *DockerRuntime) Stop(ctx context.Context, id string) error {
 	return nil
 }
 
+type dockerListOutput struct {
+	ID     string `json:"ID"`
+	Names  string `json:"Names"`
+	Status string `json:"Status"`
+	Image  string `json:"Image"`
+	Labels string `json:"Labels"`
+}
+
 func (r *DockerRuntime) List(ctx context.Context, labelFilter map[string]string) ([]AgentInfo, error) {
-	// Docker implementation of list using --format {{json .}}
 	args := []string{"ps", "-a", "--format", "{{json .}}"}
 	cmd := exec.CommandContext(ctx, r.Command, args...)
 	out, err := cmd.CombinedOutput()
@@ -72,20 +79,36 @@ func (r *DockerRuntime) List(ctx context.Context, labelFilter map[string]string)
 		if line == "" {
 			continue
 		}
-		var data struct {
-			ID     string `json:"ID"`
-			Names  string `json:"Names"`
-			Status string `json:"Status"`
-			Image  string `json:"Image"`
-			Labels string `json:"Labels"`
-		}
+		var data dockerListOutput
 		if err := json.Unmarshal([]byte(line), &data); err != nil {
 			continue
 		}
 
-		// Docker labels in json format are a comma separated string in some versions,
-		// or we might need to be more careful. 
-		// For now, let's keep it simple.
+		// Parse Labels string "key1=val1,key2=val2"
+		labels := make(map[string]string)
+		if data.Labels != "" {
+			pairs := strings.Split(data.Labels, ",")
+			for _, pair := range pairs {
+				kv := strings.SplitN(pair, "=", 2)
+				if len(kv) == 2 {
+					labels[kv[0]] = kv[1]
+				}
+			}
+		}
+
+		// Filter by labels if requested
+		if len(labelFilter) > 0 {
+			match := true
+			for k, v := range labelFilter {
+				if lv, ok := labels[k]; !ok || lv != v {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
 
 		agents = append(agents, AgentInfo{
 			ID:     data.ID,

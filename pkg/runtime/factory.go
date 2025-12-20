@@ -7,23 +7,24 @@ import (
 
 func GetRuntime() Runtime {
 	sandbox := os.Getenv("GEMINI_SANDBOX")
-	if sandbox == "container" {
+	switch sandbox {
+	case "container":
 		return NewAppleContainerRuntime()
-	}
-	if sandbox == "docker" {
+	case "docker":
 		return NewDockerRuntime()
 	}
 
-	// Auto-detection on macOS
+	// Auto-detection: check for available runtimes
+	// On macOS, 'container' is often preferred for performance if available,
+	// but both are fully supported.
 	if _, err := exec.LookPath("container"); err == nil {
 		return NewAppleContainerRuntime()
 	}
 
-	// Fallback to Docker if present
 	if _, err := exec.LookPath("docker"); err == nil {
 		return NewDockerRuntime()
 	}
 
-	// Default to Apple Container (might fail at call time if missing)
+	// Default return - the caller will handle the error if the binary is missing
 	return NewAppleContainerRuntime()
 }
