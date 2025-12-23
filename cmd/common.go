@@ -108,7 +108,7 @@ func ProvisionAgent(agentName string, templateName string, agentImage string, gr
 		return "", "", nil, fmt.Errorf("failed to load template: %w", err)
 	}
 
-	var finalScionCfg *config.ScionConfig
+	finalScionCfg := &config.ScionConfig{}
 
 	for _, tpl := range chain {
 		fmt.Printf("Applying template: %s\n", tpl.Name)
@@ -116,10 +116,10 @@ func ProvisionAgent(agentName string, templateName string, agentImage string, gr
 			return "", "", nil, fmt.Errorf("failed to copy template %s: %w", tpl.Name, err)
 		}
 
-		// Load scion.json from this template to see if it specifies an image
+		// Load scion.json from this template and merge it
 		tplCfg, err := tpl.LoadConfig()
 		if err == nil {
-			finalScionCfg = tplCfg
+			finalScionCfg = config.MergeScionConfig(finalScionCfg, tplCfg)
 		}
 	}
 
@@ -399,12 +399,78 @@ func GetAgent(agentName string, templateName string, agentImage string, grovePat
 		return agentDir, home, ws, cfg, err
 	}
 
-	fmt.Printf("Using existing agent '%s'...\n", agentName)
-	// Load from existing agent's scion.json
-	tpl := &config.Template{Path: agentHome}
-	cfg, err := tpl.LoadConfig()
-	if err != nil {
-		return agentDir, agentHome, agentWorkspace, nil, fmt.Errorf("failed to load agent config: %w", err)
+		fmt.Printf("Using existing agent '%s'...\n", agentName)
+
+		// Load the agent's scion.json
+
+		tpl := &config.Template{Path: agentHome}
+
+		agentCfg, err := tpl.LoadConfig()
+
+		if err != nil {
+
+			return agentDir, agentHome, agentWorkspace, nil, fmt.Errorf("failed to load agent config: %w", err)
+
+		}
+
+	
+
+		// Re-construct the full config by merging the template chain
+
+		// The agent's scion.json acts as the final override
+
+		
+
+		// Determine the template name from the agent's config or default
+
+		effectiveTemplate := "default"
+
+		if agentCfg.Template != "" {
+
+			effectiveTemplate = agentCfg.Template
+
+		}
+
+	
+
+		chain, err := config.GetTemplateChain(effectiveTemplate)
+
+		if err != nil {
+
+			// If we can't find the template, warn but proceed with just the agent config
+
+			fmt.Printf("Warning: failed to load template chain for '%s': %v. Using agent config as is.\n", effectiveTemplate, err)
+
+			return agentDir, agentHome, agentWorkspace, agentCfg, nil
+
+		}
+
+	
+
+		mergedCfg := &config.ScionConfig{}
+
+		for _, tpl := range chain {
+
+			tplCfg, err := tpl.LoadConfig()
+
+			if err == nil {
+
+				mergedCfg = config.MergeScionConfig(mergedCfg, tplCfg)
+
+			}
+
+		}
+
+	
+
+		// Finally merge the agent's specific config on top
+
+		finalCfg := config.MergeScionConfig(mergedCfg, agentCfg)
+
+	
+
+		return agentDir, agentHome, agentWorkspace, finalCfg, nil
+
 	}
-	return agentDir, agentHome, agentWorkspace, cfg, nil
-}
+
+	

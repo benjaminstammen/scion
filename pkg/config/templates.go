@@ -202,3 +202,51 @@ func ListTemplates() ([]*Template, error) {
 	return list, nil
 }
 
+func MergeScionConfig(base, override *ScionConfig) *ScionConfig {
+	if base == nil {
+		base = &ScionConfig{}
+	}
+	if override == nil {
+		return base
+	}
+
+	result := *base // Shallow copy
+
+	if override.Template != "" {
+		result.Template = override.Template
+	}
+	if override.UnixUsername != "" {
+		result.UnixUsername = override.UnixUsername
+	}
+	if override.Image != "" {
+		result.Image = override.Image
+	}
+	if override.Detached != nil {
+		result.Detached = override.Detached
+	}
+	if override.UseTmux {
+		result.UseTmux = true
+	}
+	if override.Model != "" {
+		result.Model = override.Model
+	}
+	if override.Agent != nil {
+		if result.Agent == nil {
+			result.Agent = override.Agent
+		} else {
+			// Merge AgentConfig fields
+			if override.Agent.Grove != "" {
+				result.Agent.Grove = override.Agent.Grove
+			}
+			if override.Agent.Name != "" {
+				result.Agent.Name = override.Agent.Name
+			}
+			if override.Agent.Status != "" {
+				result.Agent.Status = override.Agent.Status
+			}
+		}
+	}
+
+	return &result
+}
+
