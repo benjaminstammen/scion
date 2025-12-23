@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ptone/scion/pkg/runtime"
+	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/spf13/cobra"
 )
 

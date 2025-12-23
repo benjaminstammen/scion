@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/ptone/scion/pkg/config"
+	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/spf13/cobra"
 )
 

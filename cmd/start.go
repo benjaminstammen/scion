@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ptone/scion/pkg/config"
-	"github.com/ptone/scion/pkg/runtime"
-	"github.com/ptone/scion/pkg/util"
+	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/runtime"
+	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/spf13/cobra"
 )
 

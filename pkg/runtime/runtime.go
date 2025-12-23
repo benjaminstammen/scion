@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 
-	"github.com/ptone/scion/pkg/config"
+	"github.com/ptone/scion-agent/pkg/config"
 )
 
 type AgentInfo struct {

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ptone/scion/pkg/util"
+	"github.com/ptone/scion-agent/pkg/util"
 )
 
 // buildCommonRunArgs constructs the common arguments for 'run' command across different runtimes.

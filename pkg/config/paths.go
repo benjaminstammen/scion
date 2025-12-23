@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ptone/scion/pkg/util"
+	"github.com/ptone/scion-agent/pkg/util"
 )
 
 const (

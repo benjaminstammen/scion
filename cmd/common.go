@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ptone/scion/pkg/config"
-	"github.com/ptone/scion/pkg/util"
+	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/util"
 )
 
 func DeleteAgentFiles(agentName string) error {

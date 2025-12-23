@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ptone/scion/pkg/config"
+	"github.com/ptone/scion-agent/pkg/config"
 )
 
 func TestBuildCommonRunArgs(t *testing.T) {
