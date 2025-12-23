@@ -24,6 +24,8 @@ var stopCmd = &cobra.Command{
 			return err
 		}
 
+		_ = UpdateAgentStatus(agentName, "stopped")
+
 		if stopRm {
 			if err := rt.Delete(context.Background(), agentName); err != nil {
 				return err

@@ -94,10 +94,19 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 	args = append(args, config.Image)
 
 	if config.UseTmux {
-		geminiCmd := fmt.Sprintf("gemini --yolo --prompt-interactive %q", config.Task)
+		resumeFlag := ""
+		if config.Resume {
+			resumeFlag = "--resume "
+		}
+		geminiCmd := fmt.Sprintf("gemini --yolo %s--prompt-interactive %q", resumeFlag, config.Task)
 		args = append(args, "tmux", "new-session", "-s", "scion", geminiCmd)
 	} else {
-		args = append(args, "gemini", "--yolo", "--prompt-interactive", config.Task)
+		geminiArgs := []string{"gemini", "--yolo"}
+		if config.Resume {
+			geminiArgs = append(geminiArgs, "--resume")
+		}
+		geminiArgs = append(geminiArgs, "--prompt-interactive", config.Task)
+		args = append(args, geminiArgs...)
 	}
 
 	return args, nil

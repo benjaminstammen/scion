@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/util"
 )
 
@@ -139,6 +142,245 @@ func ProvisionAgent(agentName string, templateName string, agentImage string, gr
 	os.WriteFile(filepath.Join(agentHome, "scion.json"), agentCfgData, 0644)
 
 	return agentHome, agentWorkspace, finalScionCfg, nil
+}
+
+var (
+	templateName string
+	agentImage   string
+	noAuth       bool
+	attach       bool
+	model        string
+)
+
+func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
+	agentName := args[0]
+	task := strings.Join(args[1:], " ")
+
+	// 0. Check if container already exists
+	rt := runtime.GetRuntime()
+	agents, err := rt.List(context.Background(), nil)
+	if err == nil {
+		for _, a := range agents {
+			if a.ID == agentName || a.Name == agentName {
+				isRunning := strings.Contains(a.Status, "Up") || strings.Contains(a.Status, "running")
+				if isRunning {
+					fmt.Printf("Agent container '%s' is already running.\n", agentName)
+					if attach {
+						fmt.Printf("Attaching to agent '%s'...\n", agentName)
+						return rt.Attach(context.Background(), a.ID)
+					}
+					return nil
+				}
+				// If it exists but not running, we delete it so we can recreate it
+				action := "Re-starting"
+				if resume {
+					action = "Resuming"
+				}
+				fmt.Printf("Agent container '%s' exists but is not running (Status: %s). %s...\n", agentName, a.Status, action)
+				_ = rt.Delete(context.Background(), a.ID)
+			}
+		}
+	}
+
+	projectDir, err := config.GetResolvedProjectDir(grovePath)
+	if err != nil {
+		return err
+	}
+	groveName := config.GetGroveName(projectDir)
+
+	agentDir, agentHome, agentWorkspace, finalScionCfg, err := GetAgent(agentName, templateName, agentImage, grovePath, "")
+	if err != nil {
+		return err
+	}
+
+	promptFile := filepath.Join(agentDir, "prompt.md")
+	promptFileContent := ""
+	if content, err := os.ReadFile(promptFile); err == nil {
+		promptFileContent = strings.TrimSpace(string(content))
+	}
+
+	if task == "" && promptFileContent == "" {
+		return fmt.Errorf("no task provided: prompt.md is empty and no task arguments were given")
+	}
+
+	if task != "" && promptFileContent != "" {
+		return fmt.Errorf("task conflict: both prompt.md and command line arguments provide a task")
+	}
+
+	if task == "" {
+		task = promptFileContent
+	} else if promptFileContent == "" {
+		// Update prompt.md for posterity if it was empty
+		_ = os.WriteFile(promptFile, []byte(task), 0644)
+	}
+
+	if resume {
+		fmt.Printf("Resuming agent '%s' for task: %s\n", agentName, task)
+	} else {
+		fmt.Printf("Starting agent '%s' for task: %s\n", agentName, task)
+	}
+
+	// Resolve image
+	resolvedImage := ""
+	if finalScionCfg != nil && finalScionCfg.Image != "" {
+		resolvedImage = finalScionCfg.Image
+	}
+	// Flag takes ultimate precedence
+	if agentImage != "" {
+		resolvedImage = agentImage
+	}
+	if resolvedImage == "" {
+		resolvedImage = "gemini-cli-sandbox"
+	}
+
+	// 3. Propagate credentials
+	var auth config.AuthConfig
+	if !noAuth {
+		// Load agent settings from the home directory
+		agentSettingsPath := filepath.Join(agentHome, ".gemini", "settings.json")
+		agentSettings, _ := config.LoadGeminiSettings(agentSettingsPath)
+		auth = config.DiscoverAuth(agentSettings)
+	}
+
+	// 4. Launch container
+	rt = runtime.GetRuntime()
+
+	detached := true
+	useTmux := false
+	resolvedModel := "flash"
+	unixUsername := "node"
+
+	if finalScionCfg != nil {
+		detached = finalScionCfg.IsDetached()
+		if finalScionCfg.UseTmux {
+			useTmux = true
+		}
+		if finalScionCfg.Model != "" {
+			resolvedModel = finalScionCfg.Model
+		}
+		if finalScionCfg.UnixUsername != "" {
+			unixUsername = finalScionCfg.UnixUsername
+		}
+	}
+
+	// -a flag overrides detached config
+	if cmd.Flags().Changed("attach") {
+		detached = !attach
+	}
+
+	if model != "" {
+		resolvedModel = model
+	}
+
+	if useTmux {
+		tmuxImage := resolvedImage
+		if !strings.Contains(tmuxImage, ":") {
+			tmuxImage = tmuxImage + ":tmux"
+		} else {
+			parts := strings.SplitN(resolvedImage, ":", 2)
+			tmuxImage = parts[0] + ":tmux"
+		}
+
+		exists, err := rt.ImageExists(context.Background(), tmuxImage)
+		if err != nil || !exists {
+			return fmt.Errorf("tmux support requested but image '%s' not found. Please ensure the image has a :tmux tag.", tmuxImage)
+		}
+		resolvedImage = tmuxImage
+	}
+
+	agentEnv := []string{
+		fmt.Sprintf("GEMINI_AGENT_NAME=%s", agentName),
+	}
+	if !strings.HasPrefix(strings.TrimSpace(config.DefaultSystemPrompt), "# Placeholder") {
+		agentEnv = append(agentEnv, fmt.Sprintf("GEMINI_SYSTEM_MD=/home/%s/.gemini/system_prompt.md", unixUsername))
+	}
+
+	template := ""
+	if finalScionCfg != nil {
+		template = finalScionCfg.Template
+	}
+
+	runCfg := runtime.RunConfig{
+		Name:         agentName,
+		Template:     template,
+		UnixUsername: unixUsername,
+		Image:        resolvedImage,
+		HomeDir:      agentHome,
+		Workspace:    agentWorkspace,
+		Auth:         auth,
+		UseTmux:      useTmux,
+		Model:        resolvedModel,
+		Task:         task,
+		Env:          agentEnv,
+		Resume:       resume,
+		Labels: map[string]string{
+			"scion.agent":      "true",
+			"scion.name":       agentName,
+			"scion.grove":      groveName,
+			"scion.grove_path": projectDir,
+		},
+	}
+
+	id, err := rt.Run(context.Background(), runCfg)
+	if err != nil {
+		return fmt.Errorf("failed to launch container: %w", err)
+	}
+
+	status := "running"
+	if resume {
+		status = "resumed"
+	}
+	_ = UpdateAgentStatus(agentName, status)
+
+	if detached {
+		displayStatus := "launched"
+		if resume {
+			displayStatus = "resumed"
+		}
+		fmt.Printf("Agent '%s' %s successfully (ID: %s)\n", agentName, displayStatus, id)
+	} else {
+		fmt.Printf("Attaching to agent '%s'...\n", agentName)
+		return rt.Attach(context.Background(), id)
+	}
+
+	return nil
+}
+
+func UpdateAgentStatus(agentName string, status string) error {
+	projectDir, err := config.GetResolvedProjectDir(grovePath)
+	if err != nil {
+		return err
+	}
+	agentsDir := filepath.Join(projectDir, "agents")
+	agentDir := filepath.Join(agentsDir, agentName)
+	agentHome := filepath.Join(agentDir, "home")
+	scionJsonPath := filepath.Join(agentHome, "scion.json")
+
+	if _, err := os.Stat(scionJsonPath); os.IsNotExist(err) {
+		return nil // Nothing to update
+	}
+
+	data, err := os.ReadFile(scionJsonPath)
+	if err != nil {
+		return err
+	}
+
+	var cfg config.ScionConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+
+	if cfg.Agent == nil {
+		cfg.Agent = &config.AgentConfig{}
+	}
+	cfg.Agent.Status = status
+
+	newData, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(scionJsonPath, newData, 0644)
 }
 
 func GetAgent(agentName string, templateName string, agentImage string, grovePath string, optionalStatus string) (string, string, string, *config.ScionConfig, error) {

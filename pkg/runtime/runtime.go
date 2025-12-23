@@ -31,6 +31,7 @@ type RunConfig struct {
 	UseTmux      bool
 	Model        string
 	Task         string
+	Resume       bool
 }
 
 type Runtime interface {
