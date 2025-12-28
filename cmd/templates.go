@@ -96,6 +96,23 @@ var templatesDeleteCmd = &cobra.Command{
 	},
 }
 
+var templatesCloneCmd = &cobra.Command{
+	Use:   "clone <src-name> <dest-name>",
+	Short: "Clone an existing template",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		srcName := args[0]
+		destName := args[1]
+		global, _ := cmd.Flags().GetBool("global")
+		err := config.CloneTemplate(srcName, destName, global)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Template %s cloned to %s successfully.\n", srcName, destName)
+		return nil
+	},
+}
+
 var templatesUpdateDefaultCmd = &cobra.Command{
 	Use:   "update-default",
 	Short: "Update default templates with the latest from the binary",
@@ -115,6 +132,7 @@ func init() {
 	templatesCmd.AddCommand(templatesListCmd)
 	templatesCmd.AddCommand(templatesShowCmd)
 	templatesCmd.AddCommand(templatesCreateCmd)
+	templatesCmd.AddCommand(templatesCloneCmd)
 	templatesCmd.AddCommand(templatesDeleteCmd)
 	templatesCmd.AddCommand(templatesUpdateDefaultCmd)
 

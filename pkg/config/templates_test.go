@@ -238,3 +238,80 @@ func TestMergeScionConfig(t *testing.T) {
 		}
 	})
 }
+
+func TestCloneTemplate(t *testing.T) {
+	// Setup a temporary directory for the test
+	tmpDir, err := os.MkdirTemp("", "scion-test-clone-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Override home dir for global templates
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	// Create a mock project structure
+	projectDir := filepath.Join(tmpDir, "project", DotScion)
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Helper to change current working directory
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	if err := os.Chdir(filepath.Dir(projectDir)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a source template
+	srcName := "src-tpl"
+	if err := CreateTemplate(srcName, "gemini", false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test cloning to project
+	destName := "dest-tpl"
+	if err := CloneTemplate(srcName, destName, false); err != nil {
+		t.Fatalf("failed to clone template: %v", err)
+	}
+
+	expectedPath := filepath.Join(projectDir, "templates", destName)
+	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+		t.Errorf("expected cloned template directory %s to exist", expectedPath)
+	}
+
+	// Verify key files exist in destination
+	files := []string{
+		"scion.json",
+		".bashrc",
+		filepath.Join(".gemini", "settings.json"),
+	}
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(expectedPath, f)); os.IsNotExist(err) {
+			t.Errorf("expected file %s to exist in cloned template", f)
+		}
+	}
+
+	// Test cloning to global
+	globalDestName := "global-dest-tpl"
+	if err := CloneTemplate(srcName, globalDestName, true); err != nil {
+		t.Fatalf("failed to clone template to global: %v", err)
+	}
+
+	globalExpectedPath := filepath.Join(tmpDir, GlobalDir, "templates", globalDestName)
+	if _, err := os.Stat(globalExpectedPath); os.IsNotExist(err) {
+		t.Errorf("expected global cloned template directory %s to exist", globalExpectedPath)
+	}
+
+	// Test cloning non-existent template fails
+	if err := CloneTemplate("no-such-template", "should-fail", false); err == nil {
+		t.Error("expected error when cloning non-existent template, got nil")
+	}
+
+	// Test cloning to existing destination fails
+	if err := CloneTemplate(srcName, destName, false); err == nil {
+		t.Error("expected error when cloning to existing destination, got nil")
+	}
+}

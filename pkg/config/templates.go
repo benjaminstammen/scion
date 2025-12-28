@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/util"
 )
 
 type Template struct {
@@ -115,6 +116,30 @@ func CreateTemplate(name string, harnessProvider string, global bool) error {
 	}
 
 	return SeedTemplateDir(templateDir, name, harnessProvider, false)
+}
+
+func CloneTemplate(srcName, destName string, global bool) error {
+	srcTpl, err := FindTemplate(srcName)
+	if err != nil {
+		return err
+	}
+
+	var destTemplatesDir string
+	if global {
+		destTemplatesDir, err = GetGlobalTemplatesDir()
+	} else {
+		destTemplatesDir, err = GetProjectTemplatesDir()
+	}
+	if err != nil {
+		return err
+	}
+
+	destPath := filepath.Join(destTemplatesDir, destName)
+	if _, err := os.Stat(destPath); err == nil {
+		return fmt.Errorf("template %s already exists at %s", destName, destPath)
+	}
+
+	return util.CopyDir(srcTpl.Path, destPath)
 }
 
 func UpdateDefaultTemplates(global bool) error {
