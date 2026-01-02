@@ -22,7 +22,7 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 	}
 	addEnv := func(name, value string) {
 		if value != "" {
-			addArg("-e", fmt.Sprintf("%s=%s", name, value))
+			addArg("-e", fmt.Sprintf("%s=%q", name, value))
 		}
 	}
 
@@ -106,7 +106,12 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 	}
 
 	for _, e := range config.Env {
-		addArg("-e", e)
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			addArg("-e", fmt.Sprintf("%s=%q", parts[0], parts[1]))
+		} else {
+			addArg("-e", e)
+		}
 	}
 
 	if config.UseTmux {
