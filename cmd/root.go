@@ -51,6 +51,7 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.Long = util.GetBanner() + "\n" + rootCmd.Long
 	rootCmd.PersistentFlags().StringVarP(&grovePath, "grove", "g", "", "Path to a .scion grove directory")
 	rootCmd.PersistentFlags().BoolVar(&globalMode, "global", false, "Use the global grove (equivalent to --grove global)")
 	rootCmd.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Configuration profile to use")

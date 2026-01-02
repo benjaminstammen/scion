@@ -7,6 +7,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/ptone/scion-agent/pkg/version"
 	"github.com/spf13/cobra"
 )
@@ -17,6 +18,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of scion",
 	Long:  `All software has versions. This is scion's`,
 	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println(util.GetBanner())
 		fmt.Println(version.Get())
 	},
 }
