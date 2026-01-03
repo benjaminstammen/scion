@@ -154,7 +154,9 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 	if finalScionCfg == nil {
 		finalScionCfg = &api.ScionConfig{}
 	}
-	finalScionCfg.Info = &api.AgentInfo{
+	
+	// Create the Info object which will go into agent-info.json
+	info := &api.AgentInfo{
 		Grove:         groveName,
 		Name:          agentName,
 		Template:      templateName,
@@ -162,13 +164,20 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 		SessionStatus: "ACTIVE",
 	}
 	if optionalStatus != "" {
-		finalScionCfg.Info.Status = optionalStatus
+		info.Status = optionalStatus
 	}
 	// Image and other fields will be resolved at runtime from settings,
 	// but we can persist the requested image if provided.
 	if agentImage != "" {
-		finalScionCfg.Info.Image = agentImage
+		info.Image = agentImage
 	}
+
+	// We want to write scion-agent.json WITHOUT the Info section to avoid redundancy.
+	// Temporarily ensure Info is nil for marshalling.
+	// Note: previous logic overwrote Info anyway, so we aren't losing merged data 
+	// that wasn't already being discarded.
+	finalScionCfg.Info = nil
+
 	agentCfgData, err := json.MarshalIndent(finalScionCfg, "", "  ")
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to marshal agent config: %w", err)
@@ -176,6 +185,9 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 	if err := os.WriteFile(filepath.Join(agentDir, "scion-agent.json"), agentCfgData, 0644); err != nil {
 		return "", "", nil, fmt.Errorf("failed to write agent config: %w", err)
 	}
+
+	// Now attach Info to the config object for return and for writing agent-info.json
+	finalScionCfg.Info = info
 
 	// Write agent-info.json to home for container access
 	if finalScionCfg.Info != nil {
@@ -199,13 +211,13 @@ func GetSavedProfile(agentName string, grovePath string) string {
 	if err != nil {
 		return ""
 	}
-	scionJSONPath := filepath.Join(projectDir, "agents", agentName, "scion-agent.json")
-	if _, err := os.Stat(scionJSONPath); err == nil {
-		data, err := os.ReadFile(scionJSONPath)
+	agentInfoPath := filepath.Join(projectDir, "agents", agentName, "home", "agent-info.json")
+	if _, err := os.Stat(agentInfoPath); err == nil {
+		data, err := os.ReadFile(agentInfoPath)
 		if err == nil {
-			var cfg api.ScionConfig
-			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
-				return cfg.Info.Profile
+			var info api.AgentInfo
+			if err := json.Unmarshal(data, &info); err == nil {
+				return info.Profile
 			}
 		}
 	}
@@ -217,13 +229,13 @@ func GetSavedRuntime(agentName string, grovePath string) string {
 	if err != nil {
 		return ""
 	}
-	scionJSONPath := filepath.Join(projectDir, "agents", agentName, "scion-agent.json")
-	if _, err := os.Stat(scionJSONPath); err == nil {
-		data, err := os.ReadFile(scionJSONPath)
+	agentInfoPath := filepath.Join(projectDir, "agents", agentName, "home", "agent-info.json")
+	if _, err := os.Stat(agentInfoPath); err == nil {
+		data, err := os.ReadFile(agentInfoPath)
 		if err == nil {
-			var cfg api.ScionConfig
-			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
-				return cfg.Info.Runtime
+			var info api.AgentInfo
+			if err := json.Unmarshal(data, &info); err == nil {
+				return info.Runtime
 			}
 		}
 	}
@@ -238,52 +250,44 @@ func UpdateAgentConfig(agentName string, grovePath string, status string, runtim
 	agentsDir := filepath.Join(projectDir, "agents")
 	agentDir := filepath.Join(agentsDir, agentName)
 	agentHome := filepath.Join(agentDir, "home")
-	scionJsonPath := filepath.Join(agentDir, "scion-agent.json")
 	agentInfoPath := filepath.Join(agentHome, "agent-info.json")
 
-	if _, err := os.Stat(scionJsonPath); os.IsNotExist(err) {
-		return nil // Nothing to update
+	// If agent-info.json doesn't exist, we can't update it. 
+	// This might happen if provisioning failed or hasn't finished.
+	if _, err := os.Stat(agentInfoPath); os.IsNotExist(err) {
+		return nil 
 	}
 
-	data, err := os.ReadFile(scionJsonPath)
+	data, err := os.ReadFile(agentInfoPath)
 	if err != nil {
 		return err
 	}
 
-	var cfg api.ScionConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	var info api.AgentInfo
+	if err := json.Unmarshal(data, &info); err != nil {
 		return err
 	}
 
-	if cfg.Info == nil {
-		cfg.Info = &api.AgentInfo{}
-	}
 	if status != "" {
-		cfg.Info.Status = status
+		info.Status = status
 	}
 	if runtime != "" {
-		cfg.Info.Runtime = runtime
+		info.Runtime = runtime
 	}
 	if profile != "" {
-		cfg.Info.Profile = profile
+		info.Profile = profile
 	}
 	if sessionStatus != "" {
-		cfg.Info.SessionStatus = sessionStatus
+		info.SessionStatus = sessionStatus
 	}
 
-	newData, err := json.MarshalIndent(cfg, "", "  ")
+	newData, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(scionJsonPath, newData, 0644); err != nil {
+	if err := os.WriteFile(agentInfoPath, newData, 0644); err != nil {
 		return err
-	}
-
-	// Also update agent-info.json in home
-	infoData, err := json.MarshalIndent(cfg.Info, "", "  ")
-	if err == nil {
-		_ = os.WriteFile(agentInfoPath, infoData, 0644)
 	}
 
 	return nil
@@ -317,17 +321,32 @@ func GetAgent(ctx context.Context, agentName string, templateName string, agentI
 		return agentDir, home, ws, cfg, err
 	}
 
+	// Try to load agent-info.json first to get the template
+	agentInfoPath := filepath.Join(agentHome, "agent-info.json")
+	var agentInfo *api.AgentInfo
+	effectiveTemplate := defaultTemplate
+
+	if infoData, err := os.ReadFile(agentInfoPath); err == nil {
+		if err := json.Unmarshal(infoData, &agentInfo); err == nil {
+			if agentInfo.Template != "" {
+				effectiveTemplate = agentInfo.Template
+			}
+		}
+	}
+
 	// Load the agent's scion-agent.json from agent root
+	// This might not contain Info anymore, but might contain other overrides
 	tpl := &config.Template{Path: agentDir}
 	agentCfg, err := tpl.LoadConfig()
 	if err != nil {
 		return agentDir, agentHome, agentWorkspace, nil, fmt.Errorf("failed to load agent config: %w", err)
 	}
 
-	// Re-construct the full config by merging the template chain
-	effectiveTemplate := defaultTemplate
-	if agentCfg.Info != nil && agentCfg.Info.Template != "" {
-		effectiveTemplate = agentCfg.Info.Template
+	// If agent-info.json was missing or didn't have template, check scion-agent.json (legacy)
+	if agentInfo == nil || agentInfo.Template == "" {
+		if agentCfg.Info != nil && agentCfg.Info.Template != "" {
+			effectiveTemplate = agentCfg.Info.Template
+		}
 	}
 
 	chain, err := config.GetTemplateChain(effectiveTemplate)
@@ -344,6 +363,11 @@ func GetAgent(ctx context.Context, agentName string, templateName string, agentI
 	}
 
 	finalCfg := config.MergeScionConfig(mergedCfg, agentCfg)
+	
+	// Ensure Info is populated from agent-info.json if available
+	if agentInfo != nil {
+		finalCfg.Info = agentInfo
+	}
 
 	return agentDir, agentHome, agentWorkspace, finalCfg, nil
 }

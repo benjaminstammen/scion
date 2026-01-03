@@ -62,10 +62,12 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 				if err := json.Unmarshal(data, &info); err == nil {
 					agents[i].Status = info.Status
 					agents[i].SessionStatus = info.SessionStatus
+					agents[i].Runtime = info.Runtime
+					agents[i].Profile = info.Profile
 				}
 			}
 
-			// Then load scion-agent.json for other metadata or if status not in info
+			// Then load scion-agent.json for legacy support or missing fields
 			if data, err := os.ReadFile(scionJSON); err == nil {
 				var cfg api.ScionConfig
 				if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
@@ -106,42 +108,54 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			agentScionJSON := filepath.Join(agentDir, "scion-agent.json")
 			agentInfoJSON := filepath.Join(agentDir, "home", "agent-info.json")
 
-			var status, sessionStatus string
-			
+			var info *api.AgentInfo
+
 			// Try agent-info.json first
 			if data, err := os.ReadFile(agentInfoJSON); err == nil {
-				var info api.AgentInfo
-				if err := json.Unmarshal(data, &info); err == nil {
-					status = info.Status
-					sessionStatus = info.SessionStatus
+				var ai api.AgentInfo
+				if err := json.Unmarshal(data, &ai); err == nil {
+					info = &ai
 				}
 			}
 
-			data, err := os.ReadFile(agentScionJSON)
-			if err != nil {
-				continue
-			}
-			var cfg api.ScionConfig
-			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
-				if status == "" {
-					status = cfg.Info.Status
+			// Fallback to scion-agent.json if info is missing (legacy)
+			if info == nil {
+				if data, err := os.ReadFile(agentScionJSON); err == nil {
+					var cfg api.ScionConfig
+					if err := json.Unmarshal(data, &cfg); err == nil {
+						info = cfg.Info
+					}
 				}
-				if sessionStatus == "" {
-					sessionStatus = cfg.Info.SessionStatus
-				}
-				agents = append(agents, api.AgentInfo{
-					Name:            e.Name(),
-					Template:        cfg.Info.Template,
-					Grove:           groveName,
-					GrovePath:       gp,
-					ContainerStatus: "created",
-					Image:           cfg.Info.Image,
-					Status:          status,
-					SessionStatus:   sessionStatus,
-					Runtime:         cfg.Info.Runtime,
-					Profile:         cfg.Info.Profile,
-				})
 			}
+			
+			// If we still have no info, check if scion-agent.json exists at all to confirm it's an agent
+			// but we can't report much.
+			if info == nil {
+				if _, err := os.Stat(agentScionJSON); err == nil {
+					// It's an agent directory but we can't read info.
+					// Maybe report minimal info?
+					info = &api.AgentInfo{
+						Name: e.Name(),
+						Grove: groveName,
+						Status: "unknown",
+					}
+				} else {
+					continue
+				}
+			}
+
+			agents = append(agents, api.AgentInfo{
+				Name:            e.Name(),
+				Template:        info.Template,
+				Grove:           groveName,
+				GrovePath:       gp,
+				ContainerStatus: "created",
+				Image:           info.Image,
+				Status:          info.Status,
+				SessionStatus:   info.SessionStatus,
+				Runtime:         info.Runtime,
+				Profile:         info.Profile,
+			})
 		}
 	}
 
