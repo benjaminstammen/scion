@@ -15,11 +15,11 @@
   },
   "harnesses": {
     "gemini": {
-      "image": "us-central1-docker.pkg.dev/ptone-misc/public-docker/gemini-cli-sandbox",
+      "image": "us-central1-docker.pkg.dev/ptone-misc/public-docker/scion-gemini",
       "user": "node"
     },
     "claude": {
-      "image": "claude-code:latest",
+      "image": "us-central1-docker.pkg.dev/ptone-misc/public-docker/scion-claude",
       "user": "node"
     }
   },
@@ -32,9 +32,6 @@
       "runtime": "kubernetes",
       "tmux": false,
       "harness_overrides": {
-        "gemini": {
-          "image": "us-docker.pkg.dev/gemini-code-dev/gemini-cli/sandbox:0.22.4"
-          }
         }
     }
   }

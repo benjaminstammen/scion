@@ -1,0 +1,9 @@
+# Ignore local environment and secrets
+.design/
+.scion/
+.gemini/
+*key*
+*secret*
+*.env
+# Keep .git for version info, but ignore if it's too big (optional)
+# .git/
