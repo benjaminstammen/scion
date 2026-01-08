@@ -83,3 +83,4 @@ substitutions:
 options:
   dynamicSubstitutions: true
   machineType: 'E2_HIGHCPU_8'
+timeout: 7200s # Sets the total build timeout to 2 hours (7200 seconds)

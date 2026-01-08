@@ -85,7 +85,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     aggregate \
     nano \
     vim \
-    python3.11-venv \
+    python3-venv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
