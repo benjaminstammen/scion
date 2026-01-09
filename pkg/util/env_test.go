@@ -29,7 +29,7 @@ func TestExpandEnv(t *testing.T) {
 		oldStderr := os.Stderr
 		os.Stderr = w
 
-		result := ExpandEnv(tt.input)
+		result, warned := ExpandEnv(tt.input)
 
 		w.Close()
 		os.Stderr = oldStderr
@@ -41,13 +41,17 @@ func TestExpandEnv(t *testing.T) {
 			t.Errorf("ExpandEnv(%q) = %q, want %q", tt.input, result, tt.expected)
 		}
 
+		if warned != tt.warn {
+			t.Errorf("ExpandEnv(%q) warned = %v, want %v", tt.input, warned, tt.warn)
+		}
+
 		if tt.warn {
 			if !strings.Contains(stderrOutput, "Warning: environment variable") {
-				t.Errorf("ExpandEnv(%q) expected warning, got none", tt.input)
+				t.Errorf("ExpandEnv(%q) expected warning in stderr, got none", tt.input)
 			}
 		} else {
 			if stderrOutput != "" {
-				t.Errorf("ExpandEnv(%q) unexpected warning: %s", tt.input, stderrOutput)
+				t.Errorf("ExpandEnv(%q) unexpected warning in stderr: %s", tt.input, stderrOutput)
 			}
 		}
 	}

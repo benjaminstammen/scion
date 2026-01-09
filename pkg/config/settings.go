@@ -197,11 +197,12 @@ func expandEnvMap(m map[string]string) map[string]string {
 	}
 	expanded := make(map[string]string)
 	for k, v := range m {
-		ek := util.ExpandEnv(k)
+		ek, _ := util.ExpandEnv(k)
 		if ek == "" {
 			continue
 		}
-		expanded[ek] = util.ExpandEnv(v)
+		val, _ := util.ExpandEnv(v)
+		expanded[ek] = val
 	}
 	return expanded
 }
@@ -212,9 +213,11 @@ func expandVolumeMounts(volumes []api.VolumeMount) []api.VolumeMount {
 	}
 	expanded := make([]api.VolumeMount, len(volumes))
 	for i, v := range volumes {
+		s, _ := util.ExpandEnv(v.Source)
+		t, _ := util.ExpandEnv(v.Target)
 		expanded[i] = api.VolumeMount{
-			Source:   util.ExpandEnv(v.Source),
-			Target:   util.ExpandEnv(v.Target),
+			Source:   s,
+			Target:   t,
 			ReadOnly: v.ReadOnly,
 		}
 	}

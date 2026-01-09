@@ -255,10 +255,15 @@ func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) []stri
 	if scionCfg != nil && scionCfg.Env != nil {
 		for k, v := range scionCfg.Env {
 			// Support variable substitution in keys and values
-			expandedKey := util.ExpandEnv(k)
-			expandedValue := util.ExpandEnv(v)
+			expandedKey, _ := util.ExpandEnv(k)
+			expandedValue, warned := util.ExpandEnv(v)
 
 			if expandedKey == "" {
+				continue
+			}
+			// If the value is empty and we warned about a missing variable,
+			// skip adding it to combined to avoid a redundant warning later.
+			if expandedValue == "" && warned {
 				continue
 			}
 			combined[expandedKey] = expandedValue
