@@ -10,6 +10,12 @@ import (
 )
 
 func TestGetAgentNames(t *testing.T) {
+	// Isolate from user environment
+	originalHome := os.Getenv("HOME")
+	tmpHome := t.TempDir()
+	os.Setenv("HOME", tmpHome)
+	defer os.Setenv("HOME", originalHome)
+
 	// Setup temp directory for grove
 	tmpDir, err := os.MkdirTemp("", "scion-completion-test")
 	if err != nil {

@@ -31,11 +31,8 @@ Then checks for any git worktree checked out to the specified branch.`,
 		if projectDir != "" {
 			agentDir := filepath.Join(projectDir, "agents", name)
 			workspace := filepath.Join(agentDir, "workspace")
-			if _, err := os.Stat(workspace); err == nil {
+			if _, err := os.Stat(filepath.Join(workspace, ".git")); err == nil {
 				targetPath = workspace
-			} else {
-				// Check for non-git workspace mount in scion-agent.json
-				targetPath = resolveAgentWorkspace(agentDir)
 			}
 		}
 
@@ -45,10 +42,8 @@ Then checks for any git worktree checked out to the specified branch.`,
 			if globalAgentsDir != "" {
 				agentDir := filepath.Join(globalAgentsDir, name)
 				workspace := filepath.Join(agentDir, "workspace")
-				if _, err := os.Stat(workspace); err == nil {
+				if _, err := os.Stat(filepath.Join(workspace, ".git")); err == nil {
 					targetPath = workspace
-				} else {
-					targetPath = resolveAgentWorkspace(agentDir)
 				}
 			}
 		}
@@ -63,7 +58,7 @@ Then checks for any git worktree checked out to the specified branch.`,
 
 		// Not found
 		if targetPath == "" {
-			fmt.Fprintf(os.Stderr, "Error: no agent or worktree found for '%s'\n", name)
+			fmt.Fprintf(os.Stderr, "Error: no agent worktree found for '%s'. 'cdw' is only valid for git-based agents that use worktrees for workspace isolation.\n", name)
 			os.Exit(1)
 		}
 
