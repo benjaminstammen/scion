@@ -9,19 +9,22 @@ Scion is a container-based orchestration tool designed to manage concurrent LLM-
 - **Parallelism**: Run multiple agents concurrently as independent processes either locally or remote.
 - **Isolation**: Each agent runs in its own container with strict separation of credentials, configuration, and environment.
 - **Context Management**: Scion uses `git worktree` to provide each agent with a dedicated workspace, preventing merge conflicts and ensuring clean separation of concerns.
+- **Profiles**: Manage multiple execution environments (e.g., Local, Docker, Kubernetes) via named profiles.
 - **Specialization**: Agents can be customized via [Templates](docs/guides/templates.md) (e.g., "Security Auditor", "QA Tester") to perform specific roles.
-- **Interactivity**: Agents support "detached" background operation, but users can "attach" to any running agent for human-in-the-loop interaction.
+- **Interactivity**: Agents run in `tmux` sessions by default, allowing for "detached" background operation, enqueuing messages to running agents, and "attaching" for human-in-the-loop interaction.
 - **Multi-Runtime**: Supports Docker, Apple Virtualization Framework, and (Experimental) Kubernetes.
-- **Harness Agnostic**: Works with Gemini CLI, Claude Code and can be adapted to any harness which can run in a container.
+- **Harness Agnostic**: Works with Gemini CLI, Claude Code, OpenCode, and Codex. Easily adaptable to any harness which can run in a container.
 
 ## Documentation
 
 - **[Concepts](docs/concepts.md)**: Understanding Agents, Groves, Harnesses, and Runtimes.
+- **[Supported Harnesses](docs/supported-harnesses.md)**: Details on Gemini, Claude, OpenCode, and Codex.
 - **[Installation](docs/install.md)**: How to get Scion up and running.
 - **[CLI Reference](docs/reference/cli.md)**: Comprehensive guide to all Scion commands.
-- **[Configuration Reference](docs/scion-config-reference.md)**: Detailed `scion-agent.json` options.
+- **[Configuration Reference](docs/reference/scion-config-reference.md)**: Detailed `scion-agent.json` options.
 - **Guides**:
     - [Using Templates](docs/guides/templates.md)
+    - [Using Tmux](docs/guides/tmux.md)
     - [Kubernetes Runtime](docs/guides/kubernetes.md)
 
 ## Installation
@@ -68,8 +71,9 @@ scion start debug "Help me debug this error" --attach
 
 ### 3. Manage Agents
 
-- **List active agents**: `scion list`
+- **List active agents**: `scion list` (alias `ps`)
 - **Attach to an agent**: `scion attach <agent-name>`
+- **Send a message**: `scion message <agent-name> "New task..."` (alias `msg`)
 - **View logs**: `scion logs <agent-name>`
 - **Stop an agent**: `scion stop <agent-name>`
 - **Resume an agent**: `scion resume <agent-name>`
@@ -78,6 +82,8 @@ scion start debug "Help me debug this error" --attach
 ## Configuration
 
 Scion settings are managed in `settings.json` files, following a precedence order: **Grove** (`.scion/settings.json`) > **Global** (`~/.scion/settings.json`) > **Defaults**.
+
+Profiles allow you to switch runtimes and configurations easily (e.g. `scion --profile remote start ...`).
 
 Templates serve as blueprints and can be managed via the `templates` subcommand. See the [Templates Guide](docs/guides/templates.md) for more details.
 

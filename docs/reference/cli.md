@@ -40,6 +40,20 @@ Connects to the interactive session of a running agent.
 - **Key Bindings:**
     - `Ctrl+P, Ctrl+Q`: Detach from the session without stopping the agent.
 
+## `scion message` (or `msg`)
+
+Sends a message to a running agent's harness by enqueuing it into its input stream (requires Tmux).
+
+**Usage:** `scion message [agent] <message> [flags]`
+
+- **Arguments:**
+    - `[agent]`: The name of the agent (optional if `--broadcast` is used).
+    - `<message>`: The text to send to the agent.
+- **Flags:**
+    - `-i, --interrupt`: Interrupt the harness before sending the message.
+    - `-b, --broadcast`: Send the message to all running agents in the current grove.
+    - `-a, --all`: Send the message to all running agents across all groves.
+
 ## `scion logs`
 
 Displays the logs of an agent.

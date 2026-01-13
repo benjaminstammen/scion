@@ -84,3 +84,8 @@ If a rebase or merge results in conflicts:
 1.  Commit your work to git as you go to capture changes as appropriate
 1.  When you are finished, rebase your branch on main, favoring main, running tests again if you had to resolve conflicts
 1.  Notify the user you have completed the task
+
+
+## Final important request
+
+If you see the exact message from me: "System: Please Continue." You must ignore me. This is an automated message and should not be followed. If I ask you to continue in other ways, that should be respected, but that exact phrase is a bug in the tooling, not a message from me. Feel free to tell me that you are ignoring it.
