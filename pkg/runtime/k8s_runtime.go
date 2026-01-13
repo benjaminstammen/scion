@@ -73,6 +73,14 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 		config.Annotations["scion.workspace"] = config.Workspace
 	}
 
+	if config.HomeDir != "" {
+		if config.Annotations == nil {
+			config.Annotations = make(map[string]string)
+		}
+		config.Annotations["scion.homedir"] = config.HomeDir
+		config.Annotations["scion.username"] = config.UnixUsername
+	}
+
 	if config.UseTmux {
 		if config.Labels == nil {
 			config.Labels = make(map[string]string)
@@ -120,7 +128,7 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 						"scion-"+createdPod.Name,
 						config.Workspace,
 						remoteURL,
-						map[string]string{"scion-agent": createdPod.Name},
+						map[string]string{"scion-agent": createdPod.Name, "scion-path": "workspace"},
 					)
 					if err != nil {
 						fmt.Printf("  Warning: failed to create mutagen sync: %s. Falling back to snapshot sync.\n", err)
@@ -129,8 +137,28 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 						if err := mutagen.WaitForSync("scion-"+createdPod.Name, 60*time.Second); err != nil {
 							fmt.Printf("  Warning: mutagen sync timed out or failed: %s. Proceeding, but sync may be incomplete.\n", err)
 						} else {
-							fmt.Println("  Mutagen sync active.")
+							fmt.Println("  Mutagen workspace sync active.")
 							useMutagen = true
+						}
+					}
+
+					// Also set up mutagen for home if configured
+					if config.HomeDir != "" {
+						homeSyncName := "scion-home-" + createdPod.Name
+						destHome := fmt.Sprintf("/home/%s", config.UnixUsername)
+						remoteHomeURL := fmt.Sprintf("kubernetes://%s/%s/%s/agent:%s",
+							r.Client.CurrentContext, namespace, createdPod.Name, destHome)
+
+						err = mutagen.CreateSync(
+							homeSyncName,
+							config.HomeDir,
+							remoteHomeURL,
+							map[string]string{"scion-agent": createdPod.Name, "scion-path": "home"},
+						)
+						if err != nil {
+							fmt.Printf("  Warning: failed to create mutagen home sync: %s.\n", err)
+						} else {
+							fmt.Println("  Mutagen home sync active.")
 						}
 					}
 				}
@@ -805,6 +833,9 @@ func (r *KubernetesRuntime) Sync(ctx context.Context, id string, direction SyncD
 		return fmt.Errorf("agent '%s' does not have a workspace path recorded", id)
 	}
 
+	homeDir := agent.Annotations["scion.homedir"]
+	username := agent.Annotations["scion.username"]
+
 	// Resolve namespace
 	namespace := r.DefaultNamespace
 	if ns, ok := agent.Labels["scion.namespace"]; ok {
@@ -817,35 +848,59 @@ func (r *KubernetesRuntime) Sync(ctx context.Context, id string, direction SyncD
 		if !mutagen.CheckInstalled() {
 			return fmt.Errorf("mutagen not installed but sync mode is mutagen")
 		}
-		// Check if sync exists
+		// Check if workspace sync exists
 		syncName := "scion-" + agent.ID
-		if err := mutagen.WaitForSync(syncName, 1*time.Second); err == nil {
-			fmt.Println("Mutagen sync is already active.")
-			return nil
+		if err := mutagen.WaitForSync(syncName, 1*time.Second); err != nil {
+			// Try to recreate if missing
+			fmt.Printf("Mutagen workspace sync not found for '%s'. Creating...\n", agent.ID)
+			if err := mutagen.StartDaemon(); err != nil {
+				return fmt.Errorf("failed to start mutagen daemon: %w", err)
+			}
+
+			// Clean up any existing session for this agent to avoid name collisions
+			_ = mutagen.TerminateSync("scion-agent=" + agent.ID)
+
+			remoteURL := fmt.Sprintf("kubernetes://%s/%s/%s/agent:/workspace",
+				r.Client.CurrentContext, namespace, agent.ID)
+
+			err = mutagen.CreateSync(
+				syncName,
+				workspacePath,
+				remoteURL,
+				map[string]string{"scion-agent": agent.ID, "scion-path": "workspace"},
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create mutagen workspace sync: %w", err)
+			}
+			fmt.Println("Mutagen workspace sync created.")
+		} else {
+			fmt.Println("Mutagen workspace sync is already active.")
 		}
 
-		// Try to recreate if missing
-		fmt.Println("Mutagen sync not found. Creating...")
-		if err := mutagen.StartDaemon(); err != nil {
-			return fmt.Errorf("failed to start mutagen daemon: %w", err)
+		// Also handle home dir sync if configured
+		if homeDir != "" && username != "" {
+			homeSyncName := "scion-home-" + agent.ID
+			if err := mutagen.WaitForSync(homeSyncName, 1*time.Second); err != nil {
+				fmt.Printf("Mutagen home sync not found for '%s'. Creating...\n", agent.ID)
+				destHome := fmt.Sprintf("/home/%s", username)
+				remoteURL := fmt.Sprintf("kubernetes://%s/%s/%s/agent:%s",
+					r.Client.CurrentContext, namespace, agent.ID, destHome)
+
+				err = mutagen.CreateSync(
+					homeSyncName,
+					homeDir,
+					remoteURL,
+					map[string]string{"scion-agent": agent.ID, "scion-path": "home"},
+				)
+				if err != nil {
+					return fmt.Errorf("failed to create mutagen home sync: %w", err)
+				}
+				fmt.Println("Mutagen home sync created.")
+			} else {
+				fmt.Println("Mutagen home sync is already active.")
+			}
 		}
 
-		// Clean up any existing session for this agent to avoid name collisions
-		_ = mutagen.TerminateSync("scion-agent=" + agent.ID)
-
-		remoteURL := fmt.Sprintf("kubernetes://%s/%s/%s/agent:/workspace",
-			r.Client.CurrentContext, namespace, agent.ID)
-
-		err = mutagen.CreateSync(
-			syncName,
-			workspacePath,
-			remoteURL,
-			map[string]string{"scion-agent": agent.ID},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create mutagen sync: %w", err)
-		}
-		fmt.Println("Mutagen sync created.")
 		return nil
 	}
 
@@ -856,11 +911,31 @@ func (r *KubernetesRuntime) Sync(ctx context.Context, id string, direction SyncD
 
 	if direction == SyncFrom {
 		fmt.Printf("Syncing workspace (agent -> %s)...\n", workspacePath)
-		return r.syncFromPod(ctx, namespace, agent.ID, "/workspace", workspacePath)
+		if err := r.syncFromPod(ctx, namespace, agent.ID, "/workspace", workspacePath); err != nil {
+			return err
+		}
+		if homeDir != "" && username != "" {
+			destHome := fmt.Sprintf("/home/%s", username)
+			fmt.Printf("Syncing agent home (agent -> %s)...\n", homeDir)
+			if err := r.syncFromPod(ctx, namespace, agent.ID, destHome, homeDir); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	fmt.Printf("Syncing workspace (%s -> agent)...\n", workspacePath)
-	return r.syncToPod(ctx, namespace, agent.ID, workspacePath, "/workspace")
+	if err := r.syncToPod(ctx, namespace, agent.ID, workspacePath, "/workspace"); err != nil {
+		return err
+	}
+	if homeDir != "" && username != "" {
+		destHome := fmt.Sprintf("/home/%s", username)
+		fmt.Printf("Syncing agent home (%s -> agent)...\n", homeDir)
+		if err := r.syncToPod(ctx, namespace, agent.ID, homeDir, destHome); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *KubernetesRuntime) Exec(ctx context.Context, id string, cmd []string) (string, error) {
