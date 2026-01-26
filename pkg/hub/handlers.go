@@ -254,19 +254,22 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If a dispatcher is available (co-located runtime host), dispatch the agent
-	// This enables zero-friction handoff - the agent will appear in both Hub and Runtime Host
+	// If a dispatcher is available (co-located runtime host) and a task was provided,
+	// dispatch the agent to start it immediately.
+	// Without a task, this is a "create only" operation (e.g., scion create).
 	var warnings []string
-	if dispatcher := s.GetDispatcher(); dispatcher != nil {
-		if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
-			// Log the error but don't fail the request - agent is created in Hub
-			warnings = append(warnings, "Failed to dispatch to runtime host: "+err.Error())
-			// The agent remains in pending status
-		} else {
-			// Update agent status to reflect it's being started
-			agent.Status = store.AgentStatusProvisioning
-			if err := s.store.UpdateAgent(ctx, agent); err != nil {
-				warnings = append(warnings, "Failed to update agent status: "+err.Error())
+	if req.Task != "" {
+		if dispatcher := s.GetDispatcher(); dispatcher != nil {
+			if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
+				// Log the error but don't fail the request - agent is created in Hub
+				warnings = append(warnings, "Failed to dispatch to runtime host: "+err.Error())
+				// The agent remains in pending status
+			} else {
+				// Update agent status to reflect it's being started
+				agent.Status = store.AgentStatusProvisioning
+				if err := s.store.UpdateAgent(ctx, agent); err != nil {
+					warnings = append(warnings, "Failed to update agent status: "+err.Error())
+				}
 			}
 		}
 	}
@@ -972,19 +975,22 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 		return
 	}
 
-	// If a dispatcher is available (co-located runtime host), dispatch the agent
-	// This enables zero-friction handoff - the agent will appear in both Hub and Runtime Host
+	// If a dispatcher is available (co-located runtime host) and a task was provided,
+	// dispatch the agent to start it immediately.
+	// Without a task, this is a "create only" operation (e.g., scion create).
 	var warnings []string
-	if dispatcher := s.GetDispatcher(); dispatcher != nil {
-		if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
-			// Log the error but don't fail the request - agent is created in Hub
-			warnings = append(warnings, "Failed to dispatch to runtime host: "+err.Error())
-			// The agent remains in pending status
-		} else {
-			// Update agent status to reflect it's being started
-			agent.Status = store.AgentStatusProvisioning
-			if err := s.store.UpdateAgent(ctx, agent); err != nil {
-				warnings = append(warnings, "Failed to update agent status: "+err.Error())
+	if req.Task != "" {
+		if dispatcher := s.GetDispatcher(); dispatcher != nil {
+			if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
+				// Log the error but don't fail the request - agent is created in Hub
+				warnings = append(warnings, "Failed to dispatch to runtime host: "+err.Error())
+				// The agent remains in pending status
+			} else {
+				// Update agent status to reflect it's being started
+				agent.Status = store.AgentStatusProvisioning
+				if err := s.store.UpdateAgent(ctx, agent); err != nil {
+					warnings = append(warnings, "Failed to update agent status: "+err.Error())
+				}
 			}
 		}
 	}
