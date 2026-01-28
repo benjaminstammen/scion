@@ -23,6 +23,7 @@ var (
 	noHub        bool   // Disable Hub integration for this invocation
 	autoConfirm  bool   // Auto-confirm prompts (non-interactive mode)
 	autoHelp     = true // Default to true, updated in PersistentPreRunE
+	debugMode    bool   // Enable debug output
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -35,6 +36,11 @@ sub-agents with isolated identities, credentials, and workspaces.`,
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Enable debug mode if --debug flag is set
+		if debugMode {
+			util.EnableDebug()
+		}
+
 		if globalMode && grovePath == "" {
 			grovePath = "global"
 		}
@@ -150,6 +156,9 @@ func init() {
 
 	// Non-interactive mode flag
 	rootCmd.PersistentFlags().BoolVarP(&autoConfirm, "yes", "y", false, "Auto-confirm prompts (non-interactive mode)")
+
+	// Debug mode flag
+	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "Enable debug output (equivalent to SCION_DEBUG=1)")
 }
 
 // GetHubEndpoint returns the effective Hub endpoint based on flags and settings.

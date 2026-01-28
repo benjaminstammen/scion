@@ -157,8 +157,6 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 		return nil, fmt.Errorf("Hub endpoint not configured. Set SCION_HUB_ENDPOINT or use --hub flag")
 	}
 
-	debug := os.Getenv("SCION_DEBUG") != ""
-
 	var opts []hubclient.Option
 
 	// Add authentication - check in priority order
@@ -187,10 +185,8 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 		authMethod = "dev auth (auto-detected)"
 	}
 
-	if debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Hub client auth: %s\n", authMethod)
-		fmt.Fprintf(os.Stderr, "[DEBUG] Hub endpoint: %s\n", endpoint)
-	}
+	util.Debugf("Hub client auth: %s", authMethod)
+	util.Debugf("Hub endpoint: %s", endpoint)
 
 	opts = append(opts, hubclient.WithTimeout(30*time.Second))
 

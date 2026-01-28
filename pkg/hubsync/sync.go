@@ -13,16 +13,9 @@ import (
 	"github.com/ptone/scion-agent/pkg/util"
 )
 
-// debugEnabled returns true if SCION_DEBUG or SCION_DEBUG_HUBSYNC is set.
-func debugEnabled() bool {
-	return os.Getenv("SCION_DEBUG") != "" || os.Getenv("SCION_DEBUG_HUBSYNC") != ""
-}
-
 // debugf prints a debug message if debug mode is enabled.
 func debugf(format string, args ...interface{}) {
-	if debugEnabled() {
-		fmt.Fprintf(os.Stderr, "[hubsync] "+format+"\n", args...)
-	}
+	util.DebugfTagged("hubsync", format, args...)
 }
 
 // AgentRef holds both name and ID for an agent.

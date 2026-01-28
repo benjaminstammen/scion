@@ -287,9 +287,7 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 }
 
 func runSimpleCommand(ctx context.Context, command string, args ...string) (string, error) {
-	if os.Getenv("SCION_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "Debug: %s %s\n", command, strings.Join(args, " "))
-	}
+	util.Debugf("%s %s", command, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, command, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -299,9 +297,7 @@ func runSimpleCommand(ctx context.Context, command string, args ...string) (stri
 }
 
 func runInteractiveCommand(command string, args ...string) error {
-	if os.Getenv("SCION_DEBUG") != "" {
-		fmt.Fprintf(os.Stderr, "Debug: %s %s\n", command, strings.Join(args, " "))
-	}
+	util.Debugf("%s %s", command, strings.Join(args, " "))
 	cmd := exec.Command(command, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
