@@ -289,9 +289,11 @@ func (d *HTTPAgentDispatcher) DispatchAgentCreate(ctx context.Context, agent *st
 	// Add configuration if available
 	if agent.AppliedConfig != nil {
 		req.Config = &RemoteAgentConfig{
-			Template: agent.AppliedConfig.Harness,
-			Image:    agent.AppliedConfig.Image,
-			Task:     agent.AppliedConfig.Task,
+			Template:     agent.AppliedConfig.Harness,
+			Image:        agent.AppliedConfig.Image,
+			Task:         agent.AppliedConfig.Task,
+			TemplateID:   agent.AppliedConfig.TemplateID,
+			TemplateHash: agent.AppliedConfig.TemplateHash,
 		}
 		req.ResolvedEnv = agent.AppliedConfig.Env
 	}

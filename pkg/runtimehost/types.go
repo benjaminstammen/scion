@@ -156,6 +156,15 @@ type CreateAgentConfig struct {
 	Task        string                `json:"task,omitempty"`
 	CommandArgs []string              `json:"commandArgs,omitempty"`
 	Kubernetes  *api.KubernetesConfig `json:"kubernetes,omitempty"`
+
+	// TemplateID is the Hub template ID for cache lookup.
+	// When provided, the Runtime Host can use this to look up or fetch
+	// the template from the Hub and cache it locally.
+	TemplateID string `json:"templateId,omitempty"`
+
+	// TemplateHash is the content hash of the template for cache validation.
+	// If the cached template's hash matches, it can be used without re-downloading.
+	TemplateHash string `json:"templateHash,omitempty"`
 }
 
 // CreateAgentResponse is the response for creating an agent.

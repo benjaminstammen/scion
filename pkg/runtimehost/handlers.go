@@ -1,12 +1,15 @@
 package runtimehost
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/templatecache"
 )
 
 // ============================================================================
@@ -217,6 +220,26 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		opts.Task = req.Config.Task
 	}
 
+	// Hydrate template if Hub mode is enabled and template info is provided
+	if s.hydrator != nil && req.Config != nil {
+		templatePath, err := s.hydrateTemplate(ctx, req.Config)
+		if err != nil {
+			// Check if it's a Hub connectivity error
+			if templatecache.IsHubConnectivityError(err) {
+				HubUnreachableError(w, err.Error())
+				return
+			}
+			TemplateError(w, "Failed to hydrate template: "+err.Error())
+			return
+		}
+		if templatePath != "" {
+			opts.Template = templatePath
+			if s.config.Debug {
+				log.Printf("[RuntimeHost] Using hydrated template from: %s", templatePath)
+			}
+		}
+	}
+
 	// Always set env (may be empty, which is fine)
 	opts.Env = env
 
@@ -233,6 +256,28 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// hydrateTemplate fetches and caches a template from the Hub if template info is provided.
+// Returns the local template path, or empty string if no Hub template was specified.
+func (s *Server) hydrateTemplate(ctx context.Context, cfg *CreateAgentConfig) (string, error) {
+	// Check if we have template info from Hub
+	if cfg.TemplateID == "" && cfg.TemplateHash == "" {
+		// No Hub template info provided, use local template handling
+		return "", nil
+	}
+
+	// If we have a template hash, try to use it for cache lookup
+	if cfg.TemplateHash != "" && cfg.TemplateID != "" {
+		return s.hydrator.HydrateWithHash(ctx, cfg.TemplateID, cfg.TemplateHash)
+	}
+
+	// Just have template ID, do full hydration
+	if cfg.TemplateID != "" {
+		return s.hydrator.Hydrate(ctx, cfg.TemplateID)
+	}
+
+	return "", nil
 }
 
 func (s *Server) handleAgentByID(w http.ResponseWriter, r *http.Request) {

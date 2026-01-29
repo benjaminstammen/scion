@@ -9,13 +9,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
 	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/runtime"
+	"github.com/ptone/scion-agent/pkg/templatecache"
 )
 
 // ServerConfig holds configuration for the Runtime Host API server.
@@ -48,6 +52,21 @@ type ServerConfig struct {
 
 	// Debug enables verbose debug logging.
 	Debug bool
+
+	// Hub integration settings
+	// HubEnabled indicates whether this Runtime Host should connect to a Hub
+	// for template hydration and other centralized services.
+	HubEnabled bool
+	// HubToken is the authentication token for the Hub API.
+	HubToken string
+
+	// Template cache settings
+	// TemplateCacheDir is the directory for caching templates fetched from the Hub.
+	// Defaults to ~/.scion/cache/templates if not specified.
+	TemplateCacheDir string
+	// TemplateCacheMaxSize is the maximum size of the template cache in bytes.
+	// Defaults to 100MB if not specified.
+	TemplateCacheMaxSize int64
 }
 
 // DefaultServerConfig returns the default server configuration.
@@ -76,6 +95,11 @@ type Server struct {
 	mu         sync.RWMutex
 	startTime  time.Time
 	version    string
+
+	// Hub integration
+	hubClient hubclient.Client
+	cache     *templatecache.Cache
+	hydrator  *templatecache.Hydrator
 }
 
 // New creates a new Runtime Host API server.
@@ -89,9 +113,88 @@ func New(cfg ServerConfig, mgr agent.Manager, rt runtime.Runtime) *Server {
 		version:   "0.1.0", // TODO: Get from build info
 	}
 
+	// Initialize Hub integration if enabled
+	if cfg.HubEnabled && cfg.HubEndpoint != "" {
+		if err := srv.initHubIntegration(); err != nil {
+			log.Printf("Warning: failed to initialize Hub integration: %v", err)
+		}
+	}
+
 	srv.registerRoutes()
 
 	return srv
+}
+
+// initHubIntegration initializes the Hub client, template cache, and hydrator.
+func (s *Server) initHubIntegration() error {
+	// Determine cache directory
+	cacheDir := s.config.TemplateCacheDir
+	if cacheDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		cacheDir = filepath.Join(homeDir, ".scion", "cache", "templates")
+	}
+
+	// Determine cache max size
+	maxSize := s.config.TemplateCacheMaxSize
+	if maxSize <= 0 {
+		maxSize = templatecache.DefaultMaxSize
+	}
+
+	// Initialize template cache
+	cache, err := templatecache.New(cacheDir, maxSize)
+	if err != nil {
+		return fmt.Errorf("failed to initialize template cache: %w", err)
+	}
+	s.cache = cache
+
+	// Initialize Hub client
+	opts := []hubclient.Option{}
+	if s.config.HubToken != "" {
+		opts = append(opts, hubclient.WithBearerToken(s.config.HubToken))
+	} else {
+		// Try auto dev auth
+		opts = append(opts, hubclient.WithAutoDevAuth())
+	}
+
+	client, err := hubclient.New(s.config.HubEndpoint, opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create Hub client: %w", err)
+	}
+	s.hubClient = client
+
+	// Initialize hydrator
+	s.hydrator = templatecache.NewHydrator(s.cache, s.hubClient)
+
+	log.Printf("Hub integration initialized (endpoint: %s, cache: %s, max: %d MB)",
+		s.config.HubEndpoint, cacheDir, maxSize/(1024*1024))
+
+	return nil
+}
+
+// SetHubClient sets the Hub client for template hydration.
+// This is useful for testing or when the client is configured externally.
+func (s *Server) SetHubClient(client hubclient.Client) {
+	s.hubClient = client
+	if s.cache != nil {
+		s.hydrator = templatecache.NewHydrator(s.cache, client)
+	}
+}
+
+// SetTemplateCache sets the template cache.
+// This is useful for testing or when the cache is configured externally.
+func (s *Server) SetTemplateCache(cache *templatecache.Cache) {
+	s.cache = cache
+	if s.hubClient != nil {
+		s.hydrator = templatecache.NewHydrator(cache, s.hubClient)
+	}
+}
+
+// GetHydrator returns the template hydrator, if configured.
+func (s *Server) GetHydrator() *templatecache.Hydrator {
+	return s.hydrator
 }
 
 // Start starts the HTTP server.

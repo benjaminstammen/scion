@@ -30,6 +30,8 @@ const (
 	ErrCodeMethodNotAllowed = "method_not_allowed"
 	ErrCodeInternalError    = "internal_error"
 	ErrCodeRuntimeError     = "runtime_error"
+	ErrCodeHubUnreachable   = "hub_unreachable"
+	ErrCodeTemplateError    = "template_error"
 )
 
 // writeError writes a JSON error response.
@@ -99,4 +101,18 @@ func InternalError(w http.ResponseWriter) {
 // RuntimeError writes a 500 error for runtime failures.
 func RuntimeError(w http.ResponseWriter, message string) {
 	writeError(w, http.StatusInternalServerError, ErrCodeRuntimeError, message, nil)
+}
+
+// HubUnreachableError writes a 503 Service Unavailable response for Hub connectivity issues.
+// This indicates that the Hub is temporarily unreachable and the operation should be retried.
+func HubUnreachableError(w http.ResponseWriter, details string) {
+	writeError(w, http.StatusServiceUnavailable, ErrCodeHubUnreachable,
+		"Hub is unreachable. Check Hub connectivity or use solo mode.", map[string]interface{}{
+			"details": details,
+		})
+}
+
+// TemplateError writes a 500 error for template-related failures.
+func TemplateError(w http.ResponseWriter, message string) {
+	writeError(w, http.StatusInternalServerError, ErrCodeTemplateError, message, nil)
 }

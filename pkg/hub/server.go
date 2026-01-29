@@ -121,6 +121,15 @@ type RemoteAgentConfig struct {
 	Env         []string `json:"env,omitempty"`
 	Task        string   `json:"task,omitempty"`
 	CommandArgs []string `json:"commandArgs,omitempty"`
+
+	// TemplateID is the Hub template ID for cache lookup on the Runtime Host.
+	// When provided, the Runtime Host can use this to fetch the template
+	// from the Hub and cache it locally.
+	TemplateID string `json:"templateId,omitempty"`
+
+	// TemplateHash is the content hash of the template for cache validation.
+	// If the cached template's hash matches, it can be used without re-downloading.
+	TemplateHash string `json:"templateHash,omitempty"`
 }
 
 // RemoteAgentResponse is the response from creating an agent on a remote runtime host.

@@ -62,6 +62,10 @@ type AgentAppliedConfig struct {
 	Env     map[string]string `json:"env,omitempty"`
 	Model   string            `json:"model,omitempty"`
 	Task    string            `json:"task,omitempty"` // Initial task/prompt for the agent
+
+	// Template info for Runtime Host hydration
+	TemplateID   string `json:"templateId,omitempty"`   // Hub template ID for fetching
+	TemplateHash string `json:"templateHash,omitempty"` // Content hash for cache validation
 }
 
 // AgentStatus constants

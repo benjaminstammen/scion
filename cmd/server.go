@@ -39,6 +39,10 @@ var (
 	enableDebug       bool
 	storageBucket     string
 	storageDir        string
+
+	// Template cache settings for Runtime Host
+	templateCacheDir string
+	templateCacheMax int64
 )
 
 // serverCmd represents the server command
@@ -338,6 +342,12 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			CORSAllowedHeaders: cfg.RuntimeHost.CORSAllowedHeaders,
 			CORSMaxAge:         cfg.RuntimeHost.CORSMaxAge,
 			Debug:              enableDebug,
+
+			// Hub integration for template hydration
+			HubEnabled:           cfg.RuntimeHost.HubEndpoint != "",
+			HubToken:             devAuthToken, // Use dev token if available
+			TemplateCacheDir:     templateCacheDir,
+			TemplateCacheMaxSize: templateCacheMax,
 		}
 
 		// Create Runtime Host server
@@ -690,4 +700,8 @@ func init() {
 	// Storage flags
 	serverStartCmd.Flags().StringVar(&storageBucket, "storage-bucket", "", "GCS bucket name for template storage")
 	serverStartCmd.Flags().StringVar(&storageDir, "storage-dir", "", "Local directory for template storage (alternative to GCS)")
+
+	// Template cache flags (for Runtime Host)
+	serverStartCmd.Flags().StringVar(&templateCacheDir, "template-cache-dir", "", "Directory for caching templates from Hub (default: ~/.scion/cache/templates)")
+	serverStartCmd.Flags().Int64Var(&templateCacheMax, "template-cache-max", 100*1024*1024, "Maximum template cache size in bytes (default: 100MB)")
 }
