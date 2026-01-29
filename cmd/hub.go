@@ -215,9 +215,9 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 			"cliOverride":   noHub,
 			"endpoint":      endpoint,
 			"configured":    settings.IsHubConfigured(),
+			"groveId":       settings.GroveID,
 		}
 		if settings.Hub != nil {
-			status["groveId"] = settings.Hub.GroveID
 			status["hostId"] = settings.Hub.HostID
 			status["hasToken"] = settings.Hub.Token != ""
 			status["hasApiKey"] = settings.Hub.APIKey != ""
@@ -256,8 +256,9 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Endpoint:   %s\n", valueOrNone(endpoint))
 	fmt.Printf("Configured: %v\n", settings.IsHubConfigured())
 
+	// Show grove_id from top-level setting (where it's now stored)
+	fmt.Printf("Grove ID:   %s\n", valueOrNone(settings.GroveID))
 	if settings.Hub != nil {
-		fmt.Printf("Grove ID:   %s\n", valueOrNone(settings.Hub.GroveID))
 		fmt.Printf("Host ID:    %s\n", valueOrNone(settings.Hub.HostID))
 		fmt.Printf("Has Token:  %v\n", settings.Hub.Token != "")
 		fmt.Printf("Has API Key: %v\n", settings.Hub.APIKey != "")
