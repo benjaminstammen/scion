@@ -14,6 +14,7 @@ This document specifies the authentication mechanisms for Scion's hosted mode. A
 | Web Dashboard | Browser | OAuth + Session Cookie | HTTP-only cookie |
 | CLI (Hub Commands) | Terminal | OAuth + Device Flow | Local file (`~/.scion/credentials.json`) |
 | API Direct | Programmatic | API Key or JWT | Client-managed |
+| **Development** | Any | Dev Token (Bearer) | Local file (`~/.scion/dev-token`) |
 
 ### Goals
 
@@ -24,7 +25,7 @@ This document specifies the authentication mechanisms for Scion's hosted mode. A
 
 ### Non-Goals
 
-- Runtime host authentication (addressed in separate design - see Section 8)
+- Runtime host authentication (addressed in separate design - see Section 9)
 - Service-to-service authentication between Hub components
 - Multi-tenant Hub federation
 
@@ -538,9 +539,356 @@ X-API-Key: sk_live_...
 
 ---
 
-## 6. Hub API Auth Endpoints
+## 6. Development Authentication (Interim)
 
-### 6.1 OAuth Initiation (for CLI)
+> **Status:** Interim solution for development and local testing until full OAuth is implemented.
+
+Development authentication provides a simple, zero-configuration mechanism for local development and testing. It bridges the gap until full OAuth-based authentication is implemented.
+
+### 6.1 Goals
+
+1. **Zero-config local development** - Start the server and immediately use the CLI
+2. **Persistent tokens** - Tokens survive server restarts
+3. **Environment variable override** - Easy integration with CI/testing
+4. **Clear security boundary** - Obvious when running in dev mode
+5. **Builds on existing auth** - Uses the standard `Bearer` authentication mechanism
+
+### 6.2 Token Format
+
+```
+scion_dev_<32-character-hex-string>
+```
+
+Example: `scion_dev_a1b2c3d4e5f6789012345678901234567890abcd`
+
+The `scion_dev_` prefix makes tokens easily identifiable and grep-able in logs.
+
+### 6.3 Server Configuration
+
+```yaml
+server:
+  auth:
+    # Enable development authentication mode
+    # WARNING: Not for production use
+    devMode: false  # Default: disabled
+
+    # Explicit token (optional)
+    # If empty and devMode=true, auto-generate and persist
+    devToken: ""
+
+    # Path to token file (optional)
+    # Default: ~/.scion/dev-token
+    devTokenFile: ""
+```
+
+**Environment Variable Mapping:**
+
+| Variable | Maps To |
+|----------|---------|
+| `SCION_SERVER_AUTH_DEV_MODE` | `server.auth.devMode` |
+| `SCION_SERVER_AUTH_DEV_TOKEN` | `server.auth.devToken` |
+| `SCION_SERVER_AUTH_DEV_TOKEN_FILE` | `server.auth.devTokenFile` |
+
+### 6.4 Token Resolution Flow
+
+When the server starts with development authentication enabled:
+
+1. Check if a token is explicitly configured (`server.auth.devToken`)
+2. If not, check for an existing token file at `~/.scion/dev-token`
+3. If no file exists, generate a new cryptographically secure token
+4. Store the token in `~/.scion/dev-token` with `0600` permissions
+5. Log the token to stdout for easy copy/paste
+
+**Startup Log Output:**
+```
+Scion Hub API starting on :9810
+WARNING: Development authentication enabled - not for production use
+Dev token: scion_dev_a1b2c3d4e5f6789012345678901234567890abcd
+
+To authenticate CLI commands, run:
+  export SCION_DEV_TOKEN=scion_dev_a1b2c3d4e5f6789012345678901234567890abcd
+
+Or the token has been saved to: ~/.scion/dev-token
+```
+
+### 6.5 Client Token Resolution
+
+The client checks for development tokens in the following order:
+
+1. **Explicit option** - `hubclient.WithBearerToken(token)` or `hubclient.WithDevToken(token)`
+2. **Environment variable** - `SCION_DEV_TOKEN`
+3. **Token file** - `~/.scion/dev-token`
+
+**Client Environment Variables:**
+
+| Variable | Purpose |
+|----------|---------|
+| `SCION_DEV_TOKEN` | Development token value |
+| `SCION_DEV_TOKEN_FILE` | Path to token file (default: `~/.scion/dev-token`) |
+
+### 6.6 Wire Protocol
+
+Development tokens use the standard Bearer authentication scheme:
+
+```http
+GET /api/v1/agents HTTP/1.1
+Host: localhost:9810
+Authorization: Bearer scion_dev_a1b2c3d4e5f6789012345678901234567890abcd
+```
+
+This is identical to production Bearer token authentication, ensuring no code path differences between dev and production auth flows.
+
+### 6.7 Implementation
+
+#### Server-Side Token Management
+
+```go
+package auth
+
+import (
+    "crypto/rand"
+    "encoding/hex"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
+)
+
+const (
+    devTokenPrefix = "scion_dev_"
+    devTokenLength = 32 // bytes, results in 64 hex chars
+)
+
+// DevAuthConfig holds development authentication settings.
+type DevAuthConfig struct {
+    Enabled   bool   `koanf:"devMode"`
+    Token     string `koanf:"devToken"`
+    TokenFile string `koanf:"devTokenFile"`
+}
+
+// InitDevAuth initializes development authentication.
+// Returns the token to use and any error encountered.
+func InitDevAuth(cfg DevAuthConfig, scionDir string) (string, error) {
+    if !cfg.Enabled {
+        return "", nil
+    }
+
+    // Priority 1: Explicit token in config
+    if cfg.Token != "" {
+        return cfg.Token, nil
+    }
+
+    // Determine token file path
+    tokenFile := cfg.TokenFile
+    if tokenFile == "" {
+        tokenFile = filepath.Join(scionDir, "dev-token")
+    }
+
+    // Priority 2: Existing token file
+    if data, err := os.ReadFile(tokenFile); err == nil {
+        token := strings.TrimSpace(string(data))
+        if token != "" {
+            return token, nil
+        }
+    }
+
+    // Priority 3: Generate new token
+    token, err := generateDevToken()
+    if err != nil {
+        return "", fmt.Errorf("failed to generate dev token: %w", err)
+    }
+
+    // Persist token
+    if err := os.WriteFile(tokenFile, []byte(token+"\n"), 0600); err != nil {
+        return "", fmt.Errorf("failed to write dev token file: %w", err)
+    }
+
+    return token, nil
+}
+
+// generateDevToken creates a new cryptographically secure development token.
+func generateDevToken() (string, error) {
+    bytes := make([]byte, devTokenLength)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
+    }
+    return devTokenPrefix + hex.EncodeToString(bytes), nil
+}
+
+// IsDevToken returns true if the token appears to be a development token.
+func IsDevToken(token string) bool {
+    return strings.HasPrefix(token, devTokenPrefix)
+}
+```
+
+#### Client-Side Token Resolution
+
+```go
+package hubclient
+
+import (
+    "os"
+    "path/filepath"
+    "strings"
+
+    "github.com/ptone/scion-agent/pkg/apiclient"
+)
+
+// WithDevToken sets a development token for authentication.
+func WithDevToken(token string) Option {
+    return func(c *client) {
+        c.auth = &apiclient.BearerAuth{Token: token}
+    }
+}
+
+// WithAutoDevAuth attempts to load a development token automatically.
+// Checks SCION_DEV_TOKEN env var, then ~/.scion/dev-token file.
+func WithAutoDevAuth() Option {
+    return func(c *client) {
+        token := resolveDevToken()
+        if token != "" {
+            c.auth = &apiclient.BearerAuth{Token: token}
+        }
+    }
+}
+
+// resolveDevToken finds a development token from environment or file.
+func resolveDevToken() string {
+    // Priority 1: Environment variable
+    if token := os.Getenv("SCION_DEV_TOKEN"); token != "" {
+        return token
+    }
+
+    // Priority 2: Custom token file from env
+    if tokenFile := os.Getenv("SCION_DEV_TOKEN_FILE"); tokenFile != "" {
+        if data, err := os.ReadFile(tokenFile); err == nil {
+            return strings.TrimSpace(string(data))
+        }
+    }
+
+    // Priority 3: Default token file
+    home, err := os.UserHomeDir()
+    if err != nil {
+        return ""
+    }
+
+    tokenFile := filepath.Join(home, ".scion", "dev-token")
+    if data, err := os.ReadFile(tokenFile); err == nil {
+        return strings.TrimSpace(string(data))
+    }
+
+    return ""
+}
+```
+
+### 6.8 Usage Examples
+
+#### Starting the Server
+
+```bash
+# Start Hub with dev auth (token auto-generated)
+scion server start --enable-hub --dev-auth
+
+# Or via config
+cat > ~/.scion/server.yaml << EOF
+server:
+  hub:
+    enabled: true
+  auth:
+    devMode: true
+EOF
+
+scion server start --config ~/.scion/server.yaml
+```
+
+#### Using the CLI
+
+```bash
+# Option 1: Set environment variable (explicit)
+export SCION_DEV_TOKEN=scion_dev_a1b2c3d4e5f6789012345678901234567890abcd
+scion agent list --hub http://localhost:9810
+
+# Option 2: Automatic (reads from ~/.scion/dev-token)
+scion agent list --hub http://localhost:9810
+
+# Option 3: One-liner
+SCION_DEV_TOKEN=$(cat ~/.scion/dev-token) scion agent list --hub http://localhost:9810
+```
+
+#### CI/Testing Integration
+
+```yaml
+# GitHub Actions example
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Scion Hub
+        run: |
+          scion server start --enable-hub --dev-auth --background
+          echo "SCION_DEV_TOKEN=$(cat ~/.scion/dev-token)" >> $GITHUB_ENV
+
+      - name: Run integration tests
+        run: go test ./integration/...
+        env:
+          SCION_HUB_URL: http://localhost:9810
+          # SCION_DEV_TOKEN already set above
+```
+
+### 6.9 Security Constraints
+
+**The server MUST:**
+
+1. Log a clear warning when dev auth is enabled
+2. Refuse to start with dev auth if binding to non-localhost AND TLS is disabled
+3. Include "dev-mode" in health check responses
+
+```go
+func validateDevAuthConfig(cfg *ServerConfig) error {
+    if !cfg.Auth.DevMode {
+        return nil
+    }
+
+    // Warn about dev mode
+    log.Warn("Development authentication enabled - not for production use")
+
+    // Block dangerous configurations
+    if !cfg.TLS.Enabled && !isLocalhost(cfg.Host) {
+        return fmt.Errorf("dev auth requires TLS when binding to non-localhost address")
+    }
+
+    return nil
+}
+```
+
+**Token File Permissions:**
+- Token file MUST be created with `0600` permissions (owner read/write only)
+- Client SHOULD warn if token file has overly permissive permissions
+
+**Token Entropy:**
+- Tokens use 32 bytes (256 bits) of cryptographic randomness
+- This provides sufficient entropy to prevent brute-force attacks
+
+**No Token in URLs:**
+- Tokens MUST NOT be passed in URL query parameters
+- This prevents token leakage in server logs, browser history, and referrer headers
+
+### 6.10 Migration to Production Auth
+
+When OAuth authentication is fully implemented:
+
+1. Dev auth remains available but disabled by default
+2. Production deployments set `devMode: false` explicitly
+3. The `WithAutoDevAuth()` client option becomes a no-op when `SCION_DEV_TOKEN` is unset and no token file exists
+4. Dev tokens are rejected by production servers (check for `scion_dev_` prefix)
+
+---
+
+## 7. Hub API Auth Endpoints
+
+### 7.1 OAuth Initiation (for CLI)
 
 ```
 GET /api/v1/auth/authorize
@@ -548,7 +896,7 @@ GET /api/v1/auth/authorize
   Response: { authUrl, state }
 ```
 
-### 6.2 Token Exchange
+### 7.2 Token Exchange
 
 ```
 POST /api/v1/auth/token
@@ -560,7 +908,7 @@ POST /api/v1/auth/token
   Response: { accessToken, refreshToken, expiresIn }
 ```
 
-### 6.3 Token Validation
+### 7.3 Token Validation
 
 ```
 POST /api/v1/auth/validate
@@ -570,9 +918,9 @@ POST /api/v1/auth/validate
 
 ---
 
-## 7. Security Considerations
+## 8. Security Considerations
 
-### 7.1 Token Security
+### 8.1 Token Security
 
 | Aspect | Web | CLI | API Key |
 |--------|-----|-----|---------|
@@ -581,7 +929,7 @@ POST /api/v1/auth/validate
 | Lifetime | 24 hours (session) | 30 days (renewable) | Configurable |
 | Revocation | Logout endpoint | Logout command | Dashboard |
 
-### 7.2 PKCE for CLI
+### 8.2 PKCE for CLI
 
 CLI authentication uses PKCE (Proof Key for Code Exchange) for additional security:
 
@@ -605,7 +953,7 @@ func GeneratePKCE() *PKCEChallenge {
 }
 ```
 
-### 7.3 Rate Limiting
+### 8.3 Rate Limiting
 
 Authentication endpoints are rate-limited to prevent brute force attacks:
 
@@ -615,7 +963,7 @@ Authentication endpoints are rate-limited to prevent brute force attacks:
 | `/auth/token` | 20 | 1 minute |
 | `/auth/authorize` | 10 | 1 minute |
 
-### 7.4 Audit Logging
+### 8.4 Audit Logging
 
 All authentication events are logged:
 
@@ -634,7 +982,7 @@ type AuthEvent struct {
 
 ---
 
-## 8. Future Work: Runtime Host Authentication
+## 9. Future Work: Runtime Host Authentication
 
 > **TODO:** Runtime host authentication will be addressed in a separate design document.
 
@@ -649,7 +997,18 @@ This is distinct from user authentication and will be designed separately to add
 
 ---
 
-## 9. Implementation Phases
+## 10. Implementation Phases
+
+### Phase 0: Development Authentication (Interim)
+- [ ] Add `auth.devMode`, `auth.devToken`, `auth.devTokenFile` to config schema
+- [ ] Implement `InitDevAuth()` function
+- [ ] Add `--dev-auth` flag to `scion server start`
+- [ ] Implement `DevAuthMiddleware`
+- [ ] Add startup logging for dev token
+- [ ] Add validation to block non-localhost + no-TLS + devMode
+- [ ] Add `WithDevToken()` option to `hubclient`
+- [ ] Add `WithAutoDevAuth()` option to `hubclient`
+- [ ] Add `SCION_DEV_TOKEN` environment variable support in CLI
 
 ### Phase 1: Web OAuth
 - [x] OAuth provider integration (Google, GitHub)
@@ -679,7 +1038,7 @@ This is distinct from user authentication and will be designed separately to add
 
 ---
 
-## 10. References
+## 11. References
 
 - **Permissions System:** `permissions-design.md`
 - **Web Frontend:** `web-frontend-design.md`
