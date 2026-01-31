@@ -10,6 +10,7 @@ import (
 
 	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/credentials"
 	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/spf13/cobra"
 )
@@ -218,6 +219,13 @@ func printDevAuthWarningIfNeeded(grovePath string) {
 			// Explicit auth configured, not using dev auth
 			return
 		}
+	}
+
+	// Check if OAuth credentials are available (from scion hub auth login)
+	endpoint := GetHubEndpoint(settings)
+	if endpoint != "" && credentials.IsAuthenticated(endpoint) {
+		// OAuth credentials available, not using dev auth
+		return
 	}
 
 	// Check if a dev token would be used

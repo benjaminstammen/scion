@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/credentials"
 	"github.com/ptone/scion-agent/pkg/harness"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/runtime"
@@ -163,7 +164,7 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 	// Note: HostToken is intentionally NOT used here. HostTokens are for host-level
 	// operations (registration, heartbeats) and are NOT user authentication tokens.
 	// For user operations (listing groves, agents, etc.), we use user tokens, API keys,
-	// or dev auth.
+	// OAuth credentials, or dev auth.
 	authConfigured := false
 	authMethod := ""
 	if settings.Hub != nil {
@@ -175,6 +176,15 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 			opts = append(opts, hubclient.WithAPIKey(settings.Hub.APIKey))
 			authConfigured = true
 			authMethod = "API key from settings"
+		}
+	}
+
+	// Check for OAuth credentials from scion hub auth login
+	if !authConfigured {
+		if accessToken := credentials.GetAccessToken(endpoint); accessToken != "" {
+			opts = append(opts, hubclient.WithBearerToken(accessToken))
+			authConfigured = true
+			authMethod = "OAuth credentials from scion hub auth login"
 		}
 	}
 
