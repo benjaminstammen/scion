@@ -36,6 +36,13 @@ type ServerConfig struct {
 	// AgentTokenConfig holds configuration for agent JWT tokens.
 	// If SigningKey is empty, a random key is generated.
 	AgentTokenConfig AgentTokenConfig
+	// UserTokenConfig holds configuration for user JWT tokens.
+	// If SigningKey is empty, a random key is generated.
+	UserTokenConfig UserTokenConfig
+	// TrustedProxies is a list of trusted proxy IPs/CIDRs for forwarded headers.
+	TrustedProxies []string
+	// EnableAPIKeys enables API key authentication.
+	EnableAPIKeys bool
 	// Debug enables verbose debug logging.
 	Debug bool
 }
@@ -161,6 +168,9 @@ type Server struct {
 	dispatcher        AgentDispatcher     // Optional dispatcher for co-located runtime host
 	storage           storage.Storage     // Optional storage backend for templates
 	agentTokenService *AgentTokenService  // Agent JWT token service
+	userTokenService  *UserTokenService   // User JWT token service
+	apiKeyService     *APIKeyService      // API key service
+	authConfig        AuthConfig          // Unified auth configuration
 }
 
 // New creates a new Hub API server.
@@ -178,6 +188,31 @@ func New(cfg ServerConfig, s store.Store) *Server {
 		log.Printf("[Hub] Warning: failed to initialize agent token service: %v", err)
 	} else {
 		srv.agentTokenService = tokenService
+	}
+
+	// Initialize user token service
+	userTokenService, err := NewUserTokenService(cfg.UserTokenConfig)
+	if err != nil {
+		log.Printf("[Hub] Warning: failed to initialize user token service: %v", err)
+	} else {
+		srv.userTokenService = userTokenService
+	}
+
+	// Initialize API key service if enabled
+	if cfg.EnableAPIKeys {
+		srv.apiKeyService = NewAPIKeyService(s, s)
+	}
+
+	// Build unified auth configuration
+	srv.authConfig = AuthConfig{
+		Mode:           "production",
+		DevAuthEnabled: cfg.DevAuthToken != "",
+		DevAuthToken:   cfg.DevAuthToken,
+		AgentTokenSvc:  srv.agentTokenService,
+		UserTokenSvc:   srv.userTokenService,
+		APIKeySvc:      srv.apiKeyService,
+		TrustedProxies: cfg.TrustedProxies,
+		Debug:          cfg.Debug,
 	}
 
 	srv.registerRoutes()
@@ -218,6 +253,20 @@ func (s *Server) GetAgentTokenService() *AgentTokenService {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.agentTokenService
+}
+
+// GetUserTokenService returns the user token service.
+func (s *Server) GetUserTokenService() *UserTokenService {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.userTokenService
+}
+
+// GetAPIKeyService returns the API key service.
+func (s *Server) GetAPIKeyService() *APIKeyService {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.apiKeyService
 }
 
 // GenerateAgentToken generates a JWT for an agent.
@@ -297,6 +346,16 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/healthz", s.handleHealthz)
 	s.mux.HandleFunc("/readyz", s.handleReadyz)
 
+	// Authentication endpoints (these routes are handled specially in middleware)
+	s.mux.HandleFunc("/api/v1/auth/login", s.handleAuthLogin)
+	s.mux.HandleFunc("/api/v1/auth/token", s.handleAuthToken)
+	s.mux.HandleFunc("/api/v1/auth/refresh", s.handleAuthRefresh)
+	s.mux.HandleFunc("/api/v1/auth/validate", s.handleAuthValidate)
+	s.mux.HandleFunc("/api/v1/auth/logout", s.handleAuthLogout)
+	s.mux.HandleFunc("/api/v1/auth/me", s.handleAuthMe)
+	s.mux.HandleFunc("/api/v1/auth/api-keys", s.handleAPIKeys)
+	s.mux.HandleFunc("/api/v1/auth/api-keys/", s.handleAPIKeyByID)
+
 	// API v1 routes
 	s.mux.HandleFunc("/api/v1/agents", s.handleAgents)
 	s.mux.HandleFunc("/api/v1/agents/", s.handleAgentByID)
@@ -334,14 +393,11 @@ func (s *Server) applyMiddleware(h http.Handler) http.Handler {
 	// Apply middleware in reverse order (last applied runs first)
 	h = s.recoveryMiddleware(h)
 	h = s.loggingMiddleware(h)
-	// Apply agent token middleware if available (validates agent JWTs)
-	if s.agentTokenService != nil {
-		h = s.agentTokenService.AgentAuthMiddleware(h)
-	}
-	// Apply dev auth middleware if configured
-	if s.config.DevAuthToken != "" {
-		h = DevAuthMiddlewareWithDebug(s.config.DevAuthToken, s.config.Debug)(h)
-	}
+
+	// Apply unified auth middleware
+	// This handles all authentication types: agent tokens, user tokens, API keys, dev tokens
+	h = UnifiedAuthMiddleware(s.authConfig)(h)
+
 	if s.config.CORSEnabled {
 		h = s.corsMiddleware(h)
 	}

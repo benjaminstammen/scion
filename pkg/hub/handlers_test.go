@@ -13,7 +13,11 @@ import (
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
 )
 
+// testDevToken is the development token used for testing.
+const testDevToken = "scion_dev_test_token_for_unit_tests_1234567890"
+
 // testServer creates a test server with an in-memory SQLite store.
+// The server is configured with dev auth enabled using testDevToken.
 func testServer(t *testing.T) (*Server, store.Store) {
 	t.Helper()
 	s, err := sqlite.New(":memory:")
@@ -26,12 +30,39 @@ func testServer(t *testing.T) (*Server, store.Store) {
 	}
 
 	cfg := DefaultServerConfig()
+	cfg.DevAuthToken = testDevToken // Enable dev auth for testing
 	srv := New(cfg, s)
 	return srv, s
 }
 
 // doRequest performs an HTTP request against the test server.
+// It automatically includes the dev auth token for authenticated endpoints.
 func doRequest(t *testing.T, srv *Server, method, path string, body interface{}) *httptest.ResponseRecorder {
+	t.Helper()
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			t.Fatalf("failed to marshal body: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(method, path, bytes.NewReader(bodyBytes))
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	// Add dev auth token for authenticated endpoints
+	req.Header.Set("Authorization", "Bearer "+testDevToken)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// doRequestNoAuth performs an HTTP request without authentication.
+// Use this for testing unauthenticated access or auth endpoints themselves.
+func doRequestNoAuth(t *testing.T, srv *Server, method, path string, body interface{}) *httptest.ResponseRecorder {
 	t.Helper()
 	var bodyBytes []byte
 	if body != nil {
@@ -928,6 +959,7 @@ func TestInvalidJSON(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", bytes.NewReader([]byte("{invalid json")))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testDevToken)
 
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, req)

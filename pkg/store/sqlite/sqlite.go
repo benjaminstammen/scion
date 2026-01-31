@@ -55,6 +55,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 		migrationV4,
 		migrationV5,
 		migrationV6,
+		migrationV7,
 	}
 
 	// Create migrations table if not exists
@@ -369,6 +370,28 @@ ALTER TABLE templates ADD COLUMN updated_by TEXT;
 CREATE INDEX IF NOT EXISTS idx_templates_status ON templates(status);
 CREATE INDEX IF NOT EXISTS idx_templates_content_hash ON templates(content_hash);
 CREATE INDEX IF NOT EXISTS idx_templates_scope_id ON templates(scope, scope_id);
+`
+
+const migrationV7 = `
+-- Add API keys table
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    scopes TEXT,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    expires_at TIMESTAMP,
+    last_used TIMESTAMP,
+    created_at TIMESTAMP NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Add indexes for API keys
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix);
 `
 
 // Helper functions for JSON marshaling/unmarshaling
@@ -2892,6 +2915,220 @@ func (s *SQLiteStore) GetPoliciesForPrincipal(ctx context.Context, principalType
 	}
 
 	return policies, nil
+}
+
+// ============================================================================
+// API Key Operations
+// ============================================================================
+
+func (s *SQLiteStore) CreateAPIKey(ctx context.Context, key *store.APIKey) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO api_keys (
+			id, user_id, name, prefix, key_hash, scopes, revoked, expires_at, last_used, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		key.ID, key.UserID, key.Name, key.Prefix, key.KeyHash,
+		marshalJSON(key.Scopes), key.Revoked,
+		nullableTimePtr(key.ExpiresAt), nullableTimePtr(key.LastUsed), key.Created,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return store.ErrAlreadyExists
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetAPIKey(ctx context.Context, id string) (*store.APIKey, error) {
+	key := &store.APIKey{}
+	var scopes string
+	var expiresAt, lastUsed sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, user_id, name, prefix, key_hash, scopes, revoked, expires_at, last_used, created_at
+		FROM api_keys WHERE id = ?
+	`, id).Scan(
+		&key.ID, &key.UserID, &key.Name, &key.Prefix, &key.KeyHash,
+		&scopes, &key.Revoked, &expiresAt, &lastUsed, &key.Created,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.ErrNotFound
+		}
+		return nil, err
+	}
+
+	unmarshalJSON(scopes, &key.Scopes)
+	if expiresAt.Valid {
+		key.ExpiresAt = &expiresAt.Time
+	}
+	if lastUsed.Valid {
+		key.LastUsed = &lastUsed.Time
+	}
+
+	return key, nil
+}
+
+func (s *SQLiteStore) GetAPIKeyByHash(ctx context.Context, hash string) (*store.APIKey, error) {
+	key := &store.APIKey{}
+	var scopes string
+	var expiresAt, lastUsed sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, user_id, name, prefix, key_hash, scopes, revoked, expires_at, last_used, created_at
+		FROM api_keys WHERE key_hash = ?
+	`, hash).Scan(
+		&key.ID, &key.UserID, &key.Name, &key.Prefix, &key.KeyHash,
+		&scopes, &key.Revoked, &expiresAt, &lastUsed, &key.Created,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.ErrNotFound
+		}
+		return nil, err
+	}
+
+	unmarshalJSON(scopes, &key.Scopes)
+	if expiresAt.Valid {
+		key.ExpiresAt = &expiresAt.Time
+	}
+	if lastUsed.Valid {
+		key.LastUsed = &lastUsed.Time
+	}
+
+	return key, nil
+}
+
+func (s *SQLiteStore) GetAPIKeyByPrefix(ctx context.Context, prefix string) (*store.APIKey, error) {
+	key := &store.APIKey{}
+	var scopes string
+	var expiresAt, lastUsed sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, user_id, name, prefix, key_hash, scopes, revoked, expires_at, last_used, created_at
+		FROM api_keys WHERE prefix = ?
+	`, prefix).Scan(
+		&key.ID, &key.UserID, &key.Name, &key.Prefix, &key.KeyHash,
+		&scopes, &key.Revoked, &expiresAt, &lastUsed, &key.Created,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.ErrNotFound
+		}
+		return nil, err
+	}
+
+	unmarshalJSON(scopes, &key.Scopes)
+	if expiresAt.Valid {
+		key.ExpiresAt = &expiresAt.Time
+	}
+	if lastUsed.Valid {
+		key.LastUsed = &lastUsed.Time
+	}
+
+	return key, nil
+}
+
+func (s *SQLiteStore) UpdateAPIKey(ctx context.Context, key *store.APIKey) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE api_keys SET
+			name = ?, scopes = ?, revoked = ?, expires_at = ?, last_used = ?
+		WHERE id = ?
+	`,
+		key.Name, marshalJSON(key.Scopes), key.Revoked,
+		nullableTimePtr(key.ExpiresAt), nullableTimePtr(key.LastUsed),
+		key.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) UpdateAPIKeyLastUsed(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE api_keys SET last_used = ? WHERE id = ?",
+		time.Now(), id,
+	)
+	return err
+}
+
+func (s *SQLiteStore) DeleteAPIKey(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM api_keys WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListAPIKeys(ctx context.Context, userID string) ([]store.APIKey, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, user_id, name, prefix, scopes, revoked, expires_at, last_used, created_at
+		FROM api_keys WHERE user_id = ? AND revoked = 0
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []store.APIKey
+	for rows.Next() {
+		var key store.APIKey
+		var scopes string
+		var expiresAt, lastUsed sql.NullTime
+
+		if err := rows.Scan(
+			&key.ID, &key.UserID, &key.Name, &key.Prefix, &scopes,
+			&key.Revoked, &expiresAt, &lastUsed, &key.Created,
+		); err != nil {
+			return nil, err
+		}
+
+		unmarshalJSON(scopes, &key.Scopes)
+		if expiresAt.Valid {
+			key.ExpiresAt = &expiresAt.Time
+		}
+		if lastUsed.Valid {
+			key.LastUsed = &lastUsed.Time
+		}
+
+		keys = append(keys, key)
+	}
+
+	return keys, nil
+}
+
+func (s *SQLiteStore) RevokeUserAPIKeys(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE api_keys SET revoked = 1 WHERE user_id = ?",
+		userID,
+	)
+	return err
+}
+
+// nullableTimePtr returns a sql.NullTime for a time pointer.
+func nullableTimePtr(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{Valid: false}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
 }
 
 // Ensure SQLiteStore implements Store interface

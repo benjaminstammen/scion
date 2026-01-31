@@ -54,6 +54,9 @@ type Store interface {
 
 	// Policy operations (Hub Permissions System)
 	PolicyStore
+
+	// API Key operations
+	APIKeyStore
 }
 
 // AgentStore defines agent-related persistence operations.
@@ -455,4 +458,44 @@ type PolicyFilter struct {
 	ScopeID      string // Filter by scope ID
 	ResourceType string // Filter by resource type
 	Effect       string // Filter by effect (allow, deny)
+}
+
+// =============================================================================
+// API Keys
+// =============================================================================
+
+// APIKeyStore defines API key persistence operations.
+type APIKeyStore interface {
+	// CreateAPIKey creates a new API key record.
+	// Returns the created key (with ID set).
+	CreateAPIKey(ctx context.Context, key *APIKey) error
+
+	// GetAPIKey retrieves an API key by ID.
+	// Returns ErrNotFound if the key doesn't exist.
+	GetAPIKey(ctx context.Context, id string) (*APIKey, error)
+
+	// GetAPIKeyByHash retrieves an API key by its hash.
+	// Returns ErrNotFound if the key doesn't exist.
+	GetAPIKeyByHash(ctx context.Context, hash string) (*APIKey, error)
+
+	// GetAPIKeyByPrefix retrieves an API key by its prefix.
+	// Returns ErrNotFound if the key doesn't exist.
+	GetAPIKeyByPrefix(ctx context.Context, prefix string) (*APIKey, error)
+
+	// UpdateAPIKey updates an existing API key.
+	// Returns ErrNotFound if the key doesn't exist.
+	UpdateAPIKey(ctx context.Context, key *APIKey) error
+
+	// UpdateAPIKeyLastUsed updates the last used timestamp.
+	UpdateAPIKeyLastUsed(ctx context.Context, id string) error
+
+	// DeleteAPIKey removes an API key by ID.
+	// Returns ErrNotFound if the key doesn't exist.
+	DeleteAPIKey(ctx context.Context, id string) error
+
+	// ListAPIKeys returns API keys for a user.
+	ListAPIKeys(ctx context.Context, userID string) ([]APIKey, error)
+
+	// RevokeUserAPIKeys revokes all API keys for a user.
+	RevokeUserAPIKeys(ctx context.Context, userID string) error
 }

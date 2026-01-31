@@ -533,6 +533,42 @@ const (
 )
 
 // =============================================================================
+// API Keys
+// =============================================================================
+
+// APIKey represents an API key stored in the Hub database.
+// API keys are used for programmatic access to the Hub API.
+type APIKey struct {
+	// Identity
+	ID     string `json:"id"`     // UUID primary key
+	UserID string `json:"userId"` // FK to User.ID
+
+	// Key metadata
+	Name   string `json:"name"`   // User-provided name for the key
+	Prefix string `json:"prefix"` // First 8 chars for identification (sk_live_XXXXXXXX)
+
+	// Security - the hash is never exposed in API responses
+	KeyHash string `json:"-"` // SHA-256 hash of the full key
+
+	// Scopes limit what the key can access
+	Scopes []string `json:"scopes,omitempty"`
+
+	// Status
+	Revoked   bool       `json:"revoked"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	LastUsed  *time.Time `json:"lastUsed,omitempty"`
+
+	// Timestamps
+	Created time.Time `json:"created"`
+}
+
+// APIKeyPrefix constants
+const (
+	APIKeyPrefixLive = "sk_live_"
+	APIKeyPrefixTest = "sk_test_"
+)
+
+// =============================================================================
 // Conversion Functions: Store -> API
 //
 // These functions convert persistence models to API models for external use.

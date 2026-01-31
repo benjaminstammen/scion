@@ -17,6 +17,9 @@ type DevUser struct {
 // ID returns the user ID.
 func (u *DevUser) ID() string { return u.id }
 
+// Type returns the identity type ("dev").
+func (u *DevUser) Type() string { return "dev" }
+
 // Email returns the user email.
 func (u *DevUser) Email() string { return "dev@localhost" }
 
