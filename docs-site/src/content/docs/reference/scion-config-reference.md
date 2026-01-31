@@ -1,148 +1,36 @@
 ---
-title: Configuration Reference
+title: Configuration Overview
 ---
 
-TODO this file is pretty out of date
+Scion uses a multi-layered configuration system to manage orchestrator behavior, agent execution, and server operations.
 
+## Configuration Domains
 
+The documentation is divided into the following domains:
 
+### [Orchestrator Settings (settings.yaml)](/reference/orchestrator-settings/)
+Global and project-level settings for the `scion` CLI and orchestrator. Defines Runtimes, Harnesses, and execution Profiles.
 
-Scion uses two primary configuration files:
+### [Agent & Template Configuration (scion-agent.json)](/reference/agent-config/)
+Configuration for agent blueprints (templates) and individual agent instances. Defines container images, volumes, and environment variables.
 
-1. **`settings.json`**: Global or Grove-level orchestrator configuration (Runtimes, Harnesses, Profiles).
+### [Server Configuration (Hub & Runtime Host)](/reference/server-config/)
+Operational settings for the Scion Hub and Runtime Host services, including database and networking configuration.
 
-2. **`scion-agent.json`**: Template or Agent-level execution configuration.
+### [Web Dashboard Configuration](/reference/web-config/)
+Environment variables and settings for the Web Dashboard frontend and BFF.
 
-
-
----
-
-
-
-## 1. `scion-agent.json`
-
-
-
-This file is found in `.scion/templates/<name>/scion-agent.json` and in each agent's home directory.
-
-
-
-### Fields
-
-
-
-#### `harness` (string)
-
-The agent harness to use. 
-
-- **Supported**: `gemini`, `claude`, `opencode`, `codex`.
-
-
-
-#### `config_dir` (string)
-
-The directory within the agent's home that contains harness-specific configuration files.
-
-- **Example**: `".gemini"`
-
-
-
-#### `env` (map[string]string)
-
-Environment variables to set in the agent container.
-
-- **Example**: `{"PROJECT_ID": "my-gcp-project"}`
-
-
-
-#### `volumes` (array)
-
-A list of volume mounts to add to the agent container.
-
-- **Fields**: `source`, `target`, `read_only` (bool)
-
-
-
-#### `detached` (boolean)
-
-Whether the agent should run in detached mode by default.
-
-
-
-#### `command_args` (array of strings)
-
-Additional arguments passed to the agent's entrypoint.
-
-
-
-#### `model` (string)
-
-The model ID to use for the agent (harness-specific).
-
-
-
-#### `kubernetes` (object)
-
-Agent-specific Kubernetes overrides.
-
-- **Fields**: `context`, `namespace`, `runtimeClassName`, `resources`.
-
-
-
-#### `gemini` (object)
-
-Gemini-specific configuration.
-
-- **Fields**: `auth_selectedType`.
-
-
+### [Harness-Specific Settings](/reference/harness-settings/)
+Guide to configuring the LLM tools and harnesses running *inside* the agent containers.
 
 ---
 
+## Resolution Hierarchy
 
+Scion typically resolves configuration using the following precedence (from highest to lowest):
 
-## 2. `settings.json`
-
-
-
-Managed at `~/.scion/settings.json` or `.scion/settings.json`.
-
-
-
-### `profiles` (object)
-
-Named execution environments.
-
-- **Example**:
-
-  ```json
-
-  "profiles": {
-
-    "local": {
-
-      "runtime": "docker",
-
-      "tmux": true
-
-    }
-
-  }
-
-  ```
-
-
-
-### `runtimes` (object)
-
-Runtime backend configurations.
-
-- **Types**: `docker`, `container` (macOS), `kubernetes`.
-
-
-
-### `harnesses` (object)
-
-Global defaults for harnesses.
-
-- **Fields**: `image`, `user`, `env`, `volumes`.
+1. **CLI Flags**: `--hub`, `--profile`, etc.
+2. **Environment Variables**: `SCION_*` and `SCION_SERVER_*`.
+3. **Grove Settings**: `.scion/settings.yaml` in the current project.
+4. **Global Settings**: `~/.scion/settings.yaml` in the user's home directory.
+5. **Defaults**: Hardcoded system defaults.
