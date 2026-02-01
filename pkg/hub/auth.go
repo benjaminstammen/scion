@@ -56,8 +56,23 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
+			if cfg.Debug {
+				authHeader := r.Header.Get("Authorization")
+				hasAuth := authHeader != ""
+				authPrefix := ""
+				if len(authHeader) > 20 {
+					authPrefix = authHeader[:20] + "..."
+				} else if hasAuth {
+					authPrefix = authHeader
+				}
+				log.Printf("[Auth] %s %s - hasAuth=%v authPrefix=%q", r.Method, r.URL.Path, hasAuth, authPrefix)
+			}
+
 			// Skip auth for unauthenticated endpoints (health checks, CLI OAuth)
 			if isUnauthenticatedEndpoint(r.URL.Path) {
+				if cfg.Debug {
+					log.Printf("[Auth] Skipping auth for unauthenticated endpoint: %s", r.URL.Path)
+				}
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -232,13 +247,18 @@ func isHealthEndpoint(path string) bool {
 }
 
 // isUnauthenticatedEndpoint returns true if the path does not require authentication.
-// This includes health endpoints and CLI OAuth endpoints (used for login).
+// This includes health endpoints and OAuth/login endpoints.
 func isUnauthenticatedEndpoint(path string) bool {
 	if isHealthEndpoint(path) {
 		return true
 	}
-	// CLI OAuth endpoints - these are pre-login endpoints
-	if path == "/api/v1/auth/cli/authorize" || path == "/api/v1/auth/cli/token" {
+	// OAuth/login endpoints - these are pre-authentication endpoints
+	switch path {
+	case "/api/v1/auth/login": // Web frontend OAuth token exchange
+		return true
+	case "/api/v1/auth/cli/authorize": // CLI OAuth authorization URL
+		return true
+	case "/api/v1/auth/cli/token": // CLI OAuth token exchange
 		return true
 	}
 	return false

@@ -37,12 +37,35 @@ export function createApiRouter(config: AppConfig): Router {
         'X-Forwarded-For': ctx.ip,
       };
 
-      // Forward authorization if present, or use dev token
+      // Forward authorization in priority order:
+      // 1. Client-provided authorization header (passthrough)
+      // 2. Dev token (development mode)
+      // 3. Hub access token from session (OAuth-authenticated users)
       if (ctx.headers.authorization) {
         headers['Authorization'] = ctx.headers.authorization;
+        debug.log(`API Proxy: Using client-provided Authorization header`);
       } else if (ctx.state.devToken) {
         // Inject dev token for development authentication
         headers['Authorization'] = `Bearer ${ctx.state.devToken}`;
+        debug.log(`API Proxy: Using dev token`);
+      } else if (ctx.session?.hubAccessToken) {
+        // Use Hub-issued access token from OAuth login (Option A from server-auth-design.md)
+        headers['Authorization'] = `Bearer ${ctx.session.hubAccessToken}`;
+        debug.log(`API Proxy: Using Hub access token from session`);
+
+        // TODO: Check if token needs refresh before expiry
+        // This would require making a refresh call to Hub if token is about to expire
+      } else {
+        debug.log(`API Proxy: No authorization available`, {
+          hasAuthHeader: !!ctx.headers.authorization,
+          hasDevToken: !!ctx.state.devToken,
+          hasSession: !!ctx.session,
+          hasUser: !!ctx.session?.user,
+          userEmail: ctx.session?.user?.email,
+          hasHubToken: !!ctx.session?.hubAccessToken,
+          hubTokenExpiry: ctx.session?.hubTokenExpiry,
+          sessionKeys: ctx.session ? Object.keys(ctx.session) : [],
+        });
       }
 
       // Forward cookies if present (for session-based auth)

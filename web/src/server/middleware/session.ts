@@ -44,6 +44,12 @@ export interface SessionData {
   returnTo?: string;
   /** OAuth state for CSRF protection */
   oauthState?: string;
+  /** Hub-issued access token (for API calls to Hub) */
+  hubAccessToken?: string;
+  /** Hub-issued refresh token (for refreshing access token) */
+  hubRefreshToken?: string;
+  /** Hub access token expiry timestamp (ms since epoch) */
+  hubTokenExpiry?: number;
 }
 
 /**
@@ -154,6 +160,10 @@ export function createSessionMiddleware(app: Koa, config: AppConfig): Koa.Middle
         isNew: ctx.session?.isNew,
         hasUser: !!ctx.session?.user,
         userEmail: ctx.session?.user?.email,
+        hasHubToken: !!ctx.session?.hubAccessToken,
+        hubTokenExpiresIn: ctx.session?.hubTokenExpiry
+          ? Math.round((ctx.session.hubTokenExpiry - Date.now()) / 1000) + 's'
+          : 'n/a',
         keys: ctx.session ? Object.keys(ctx.session) : [],
       });
 

@@ -233,16 +233,80 @@ export function createAuthRouter(config: AppConfig): Router {
         return;
       }
 
-      // Store user in session
+      // Exchange OAuth credentials for Hub-issued access token (Option A from server-auth-design.md)
+      authRoutesDebug(`Exchanging OAuth credentials for Hub token`, {
+        hubApiUrl: config.hubApiUrl,
+        provider,
+        userEmail: user.email,
+      });
+
+      let hubAccessToken: string | undefined;
+      let hubRefreshToken: string | undefined;
+      let hubTokenExpiry: number | undefined;
+
+      try {
+        const hubLoginResponse = await fetch(`${config.hubApiUrl}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            provider: provider,
+            providerToken: '', // We don't need to pass the provider token for now (Hub trusts web frontend)
+            email: user.email,
+            name: user.name,
+            avatar: user.avatar || '',
+          }),
+        });
+
+        if (hubLoginResponse.ok) {
+          const hubLoginData = (await hubLoginResponse.json()) as {
+            accessToken: string;
+            refreshToken: string;
+            expiresIn: number;
+            user: { id: string; email: string; displayName: string; role: string };
+          };
+
+          hubAccessToken = hubLoginData.accessToken;
+          hubRefreshToken = hubLoginData.refreshToken;
+          hubTokenExpiry = Date.now() + hubLoginData.expiresIn * 1000;
+
+          authRoutesDebug(`Hub token exchange successful`, {
+            expiresIn: hubLoginData.expiresIn,
+            hubUserId: hubLoginData.user?.id,
+          });
+        } else {
+          const errorText = await hubLoginResponse.text();
+          authRoutesDebug(`Hub token exchange failed`, {
+            status: hubLoginResponse.status,
+            error: errorText.substring(0, 200),
+          });
+          // Continue without Hub token - API calls will fail but at least user can see the UI
+        }
+      } catch (hubError) {
+        authRoutesDebug(`Hub token exchange error`, {
+          error: hubError instanceof Error ? hubError.message : String(hubError),
+        });
+        // Continue without Hub token
+      }
+
+      // Store user and Hub tokens in session
       authRoutesDebug(`Storing user in session`, {
         sessionExists: !!ctx.session,
         userEmail: user.email,
+        hasHubToken: !!hubAccessToken,
       });
 
       if (ctx.session) {
         ctx.session.user = user;
+        if (hubAccessToken) {
+          ctx.session.hubAccessToken = hubAccessToken;
+          ctx.session.hubRefreshToken = hubRefreshToken;
+          ctx.session.hubTokenExpiry = hubTokenExpiry;
+        }
         authRoutesDebug(`User stored in session`, {
           sessionUser: ctx.session.user?.email,
+          hasHubAccessToken: !!ctx.session.hubAccessToken,
           sessionKeys: Object.keys(ctx.session),
         });
       } else {
@@ -275,10 +339,9 @@ export function createAuthRouter(config: AppConfig): Router {
   });
 
   /**
-   * POST /auth/logout
-   * Clear session and log out
+   * Logout handler - clears session and redirects to login
    */
-  router.post('/logout', async (ctx: Context) => {
+  async function handleLogout(ctx: Context): Promise<void> {
     // Clear session
     if (ctx.session) {
       ctx.session = null;
@@ -288,14 +351,26 @@ export function createAuthRouter(config: AppConfig): Router {
     ctx.state.user = undefined;
 
     // For AJAX requests, return JSON
-    if (ctx.accepts('json')) {
+    if (ctx.accepts('json') && ctx.method === 'POST') {
       ctx.body = { success: true };
       return;
     }
 
     // For browser requests, redirect to login
-    ctx.redirect('/auth/login');
-  });
+    ctx.redirect('/login');
+  }
+
+  /**
+   * POST /auth/logout
+   * Clear session and log out (for AJAX)
+   */
+  router.post('/logout', handleLogout);
+
+  /**
+   * GET /auth/logout
+   * Clear session and log out (for browser navigation)
+   */
+  router.get('/logout', handleLogout);
 
   /**
    * GET /auth/me
@@ -363,6 +438,11 @@ export function createAuthRouter(config: AppConfig): Router {
         hasUser: !!ctx.session?.user,
         hasReturnTo: !!ctx.session?.returnTo,
         hasOauthState: !!ctx.session?.oauthState,
+        hasHubAccessToken: !!ctx.session?.hubAccessToken,
+        hasHubRefreshToken: !!ctx.session?.hubRefreshToken,
+        hubTokenExpiresIn: ctx.session?.hubTokenExpiry
+          ? Math.round((ctx.session.hubTokenExpiry - Date.now()) / 1000) + 's'
+          : 'n/a',
       },
       cookies: {
         header: cookieHeader ? 'present' : 'missing',
