@@ -14,8 +14,8 @@ func TestStore_SaveLoad(t *testing.T) {
 	credPath := filepath.Join(tempDir, "host-credentials.json")
 	store := NewStore(credPath)
 
-	creds := &HostCredentials{
-		HostID:       "test-host-id",
+	creds := &BrokerCredentials{
+		BrokerID:       "test-host-id",
 		SecretKey:    base64.StdEncoding.EncodeToString([]byte("test-secret-key")),
 		HubEndpoint:  "http://localhost:8080",
 		RegisteredAt: time.Now().Truncate(time.Second),
@@ -33,8 +33,8 @@ func TestStore_SaveLoad(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if loaded.HostID != creds.HostID {
-		t.Errorf("HostID mismatch: expected %q, got %q", creds.HostID, loaded.HostID)
+	if loaded.BrokerID != creds.BrokerID {
+		t.Errorf("HostID mismatch: expected %q, got %q", creds.BrokerID, loaded.BrokerID)
 	}
 	if loaded.SecretKey != creds.SecretKey {
 		t.Errorf("SecretKey mismatch: expected %q, got %q", creds.SecretKey, loaded.SecretKey)
@@ -49,8 +49,8 @@ func TestStore_FilePermissions(t *testing.T) {
 	credPath := filepath.Join(tempDir, "host-credentials.json")
 	store := NewStore(credPath)
 
-	creds := &HostCredentials{
-		HostID:    "test-host-id",
+	creds := &BrokerCredentials{
+		BrokerID:    "test-host-id",
 		SecretKey: base64.StdEncoding.EncodeToString([]byte("secret")),
 	}
 
@@ -82,8 +82,8 @@ func TestStore_Exists(t *testing.T) {
 	}
 
 	// Create file
-	creds := &HostCredentials{
-		HostID:    "test-host-id",
+	creds := &BrokerCredentials{
+		BrokerID:    "test-host-id",
 		SecretKey: base64.StdEncoding.EncodeToString([]byte("secret")),
 	}
 	_ = store.Save(creds)
@@ -100,8 +100,8 @@ func TestStore_Delete(t *testing.T) {
 	store := NewStore(credPath)
 
 	// Create file
-	creds := &HostCredentials{
-		HostID:    "test-host-id",
+	creds := &BrokerCredentials{
+		BrokerID:    "test-host-id",
 		SecretKey: base64.StdEncoding.EncodeToString([]byte("secret")),
 	}
 	_ = store.Save(creds)
@@ -141,8 +141,8 @@ func TestStore_GetSecretKey(t *testing.T) {
 	store := NewStore(credPath)
 
 	originalKey := []byte("test-secret-key-32bytes!12345678")
-	creds := &HostCredentials{
-		HostID:    "test-host-id",
+	creds := &BrokerCredentials{
+		BrokerID:    "test-host-id",
 		SecretKey: base64.StdEncoding.EncodeToString(originalKey),
 	}
 	_ = store.Save(creds)
@@ -165,7 +165,7 @@ func TestStore_SaveValidation(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		creds     *HostCredentials
+		creds     *BrokerCredentials
 		expectErr bool
 	}{
 		{
@@ -175,24 +175,24 @@ func TestStore_SaveValidation(t *testing.T) {
 		},
 		{
 			name: "missing host ID",
-			creds: &HostCredentials{
-				HostID:    "",
+			creds: &BrokerCredentials{
+				BrokerID:    "",
 				SecretKey: "abc",
 			},
 			expectErr: true,
 		},
 		{
 			name: "missing secret key",
-			creds: &HostCredentials{
-				HostID:    "host-id",
+			creds: &BrokerCredentials{
+				BrokerID:    "host-id",
 				SecretKey: "",
 			},
 			expectErr: true,
 		},
 		{
 			name: "valid credentials",
-			creds: &HostCredentials{
-				HostID:    "host-id",
+			creds: &BrokerCredentials{
+				BrokerID:    "host-id",
 				SecretKey: "secret",
 			},
 			expectErr: false,
@@ -279,8 +279,8 @@ func TestStore_SaveFromJoinResponse(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if creds.HostID != "host-123" {
-		t.Errorf("HostID mismatch: got %q", creds.HostID)
+	if creds.BrokerID != "host-123" {
+		t.Errorf("HostID mismatch: got %q", creds.BrokerID)
 	}
 	if creds.SecretKey != "c2VjcmV0" {
 		t.Errorf("SecretKey mismatch: got %q", creds.SecretKey)
@@ -315,8 +315,8 @@ func TestStore_JSONFormat(t *testing.T) {
 	credPath := filepath.Join(tempDir, "host-credentials.json")
 	store := NewStore(credPath)
 
-	creds := &HostCredentials{
-		HostID:       "test-host-id",
+	creds := &BrokerCredentials{
+		BrokerID:       "test-host-id",
 		SecretKey:    "dGVzdC1zZWNyZXQ=",
 		HubEndpoint:  "http://localhost:8080",
 		RegisteredAt: time.Date(2025, 1, 30, 12, 0, 0, 0, time.UTC),
@@ -354,8 +354,8 @@ func TestStore_ModTime(t *testing.T) {
 	}
 
 	// Create the file
-	creds := &HostCredentials{
-		HostID:    "test-host",
+	creds := &BrokerCredentials{
+		BrokerID:    "test-host",
 		SecretKey: "dGVzdC1zZWNyZXQ=",
 	}
 	if err := store.Save(creds); err != nil {
@@ -389,8 +389,8 @@ func TestStore_LoadIfChanged(t *testing.T) {
 	}
 
 	// Create initial credentials
-	initialCreds := &HostCredentials{
-		HostID:    "host-v1",
+	initialCreds := &BrokerCredentials{
+		BrokerID:    "host-v1",
 		SecretKey: "c2VjcmV0LXYx",
 	}
 	if err := store.Save(initialCreds); err != nil {
@@ -405,8 +405,8 @@ func TestStore_LoadIfChanged(t *testing.T) {
 	if creds == nil {
 		t.Fatal("Expected credentials on first load")
 	}
-	if creds.HostID != "host-v1" {
-		t.Errorf("Expected host-v1, got %s", creds.HostID)
+	if creds.BrokerID != "host-v1" {
+		t.Errorf("Expected host-v1, got %s", creds.BrokerID)
 	}
 	if modTime.IsZero() {
 		t.Error("Expected non-zero mod time")
@@ -423,8 +423,8 @@ func TestStore_LoadIfChanged(t *testing.T) {
 
 	// Update the file
 	time.Sleep(10 * time.Millisecond) // Ensure different mod time
-	updatedCreds := &HostCredentials{
-		HostID:    "host-v2",
+	updatedCreds := &BrokerCredentials{
+		BrokerID:    "host-v2",
 		SecretKey: "c2VjcmV0LXYy",
 	}
 	if err := store.Save(updatedCreds); err != nil {
@@ -439,8 +439,8 @@ func TestStore_LoadIfChanged(t *testing.T) {
 	if creds == nil {
 		t.Fatal("Expected credentials after file update")
 	}
-	if creds.HostID != "host-v2" {
-		t.Errorf("Expected host-v2, got %s", creds.HostID)
+	if creds.BrokerID != "host-v2" {
+		t.Errorf("Expected host-v2, got %s", creds.BrokerID)
 	}
 	if !newModTime.After(modTime) {
 		t.Error("Expected new mod time to be after old mod time")

@@ -17,7 +17,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/store"
 )
 
-// AuthenticatedHostClient is an HTTP-based RuntimeHostClient that signs
+// AuthenticatedHostClient is an HTTP-based RuntimeBrokerClient that signs
 // outgoing requests with HMAC authentication. This allows the Hub to make
 // authenticated requests to Runtime Hosts.
 type AuthenticatedHostClient struct {
@@ -37,14 +37,14 @@ func NewAuthenticatedHostClient(s store.Store, debug bool) *AuthenticatedHostCli
 	}
 }
 
-// getHostSecret retrieves the secret key for a host from the store.
-func (c *AuthenticatedHostClient) getHostSecret(ctx context.Context, hostID string) ([]byte, error) {
-	secret, err := c.store.GetHostSecret(ctx, hostID)
+// getBrokerSecret retrieves the secret key for a host from the store.
+func (c *AuthenticatedHostClient) getBrokerSecret(ctx context.Context, brokerID string) ([]byte, error) {
+	secret, err := c.store.GetBrokerSecret(ctx, brokerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get host secret: %w", err)
 	}
 
-	if secret.Status != store.HostSecretStatusActive {
+	if secret.Status != store.BrokerSecretStatusActive {
 		return nil, fmt.Errorf("host secret is %s", secret.Status)
 	}
 
@@ -56,15 +56,15 @@ func (c *AuthenticatedHostClient) getHostSecret(ctx context.Context, hostID stri
 }
 
 // signRequest signs an HTTP request with HMAC authentication.
-func (c *AuthenticatedHostClient) signRequest(ctx context.Context, req *http.Request, hostID string) error {
-	secret, err := c.getHostSecret(ctx, hostID)
+func (c *AuthenticatedHostClient) signRequest(ctx context.Context, req *http.Request, brokerID string) error {
+	secret, err := c.getBrokerSecret(ctx, brokerID)
 	if err != nil {
 		return err
 	}
 
 	// Use the shared HMAC auth implementation
 	auth := &apiclient.HMACAuth{
-		HostID:    hostID,
+		BrokerID:    brokerID,
 		SecretKey: secret,
 	}
 
@@ -72,7 +72,7 @@ func (c *AuthenticatedHostClient) signRequest(ctx context.Context, req *http.Req
 }
 
 // doRequest performs an HTTP request with HMAC signing.
-func (c *AuthenticatedHostClient) doRequest(ctx context.Context, hostID, method, endpoint string, body []byte) (*http.Response, error) {
+func (c *AuthenticatedHostClient) doRequest(ctx context.Context, brokerID, method, endpoint string, body []byte) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -88,13 +88,13 @@ func (c *AuthenticatedHostClient) doRequest(ctx context.Context, hostID, method,
 	}
 
 	// Sign the request
-	if err := c.signRequest(ctx, req, hostID); err != nil {
+	if err := c.signRequest(ctx, req, brokerID); err != nil {
 		if c.debug {
-			slog.Warn("Failed to sign request", "hostID", hostID, "error", err)
+			slog.Warn("Failed to sign request", "brokerID", brokerID, "error", err)
 		}
 		// Continue without authentication - the host may reject or allow depending on its config
 	} else if c.debug {
-		slog.Debug("Signed request for host", "hostID", hostID)
+		slog.Debug("Signed request for host", "brokerID", brokerID)
 	}
 
 	if c.debug {
@@ -105,7 +105,7 @@ func (c *AuthenticatedHostClient) doRequest(ctx context.Context, hostID, method,
 }
 
 // CreateAgent creates an agent on a remote runtime host with HMAC authentication.
-func (c *AuthenticatedHostClient) CreateAgent(ctx context.Context, hostID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
+func (c *AuthenticatedHostClient) CreateAgent(ctx context.Context, brokerID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
 	endpoint := fmt.Sprintf("%s/api/v1/agents", strings.TrimSuffix(hostEndpoint, "/"))
 
 	body, err := json.Marshal(req)
@@ -113,7 +113,7 @@ func (c *AuthenticatedHostClient) CreateAgent(ctx context.Context, hostID, hostE
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, body)
+	resp, err := c.doRequest(ctx, brokerID, http.MethodPost, endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -133,10 +133,10 @@ func (c *AuthenticatedHostClient) CreateAgent(ctx context.Context, hostID, hostE
 }
 
 // StartAgent starts an agent on a remote runtime host with HMAC authentication.
-func (c *AuthenticatedHostClient) StartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
+func (c *AuthenticatedHostClient) StartAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/start", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
-	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, nil)
+	resp, err := c.doRequest(ctx, brokerID, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -151,10 +151,10 @@ func (c *AuthenticatedHostClient) StartAgent(ctx context.Context, hostID, hostEn
 }
 
 // StopAgent stops an agent on a remote runtime host with HMAC authentication.
-func (c *AuthenticatedHostClient) StopAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
+func (c *AuthenticatedHostClient) StopAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/stop", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
-	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, nil)
+	resp, err := c.doRequest(ctx, brokerID, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -169,10 +169,10 @@ func (c *AuthenticatedHostClient) StopAgent(ctx context.Context, hostID, hostEnd
 }
 
 // RestartAgent restarts an agent on a remote runtime host with HMAC authentication.
-func (c *AuthenticatedHostClient) RestartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
+func (c *AuthenticatedHostClient) RestartAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/restart", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
-	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, nil)
+	resp, err := c.doRequest(ctx, brokerID, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -187,11 +187,11 @@ func (c *AuthenticatedHostClient) RestartAgent(ctx context.Context, hostID, host
 }
 
 // DeleteAgent deletes an agent from a remote runtime host with HMAC authentication.
-func (c *AuthenticatedHostClient) DeleteAgent(ctx context.Context, hostID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
+func (c *AuthenticatedHostClient) DeleteAgent(ctx context.Context, brokerID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s?deleteFiles=%t&removeBranch=%t",
 		strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID), deleteFiles, removeBranch)
 
-	resp, err := c.doRequest(ctx, hostID, http.MethodDelete, endpoint, nil)
+	resp, err := c.doRequest(ctx, brokerID, http.MethodDelete, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -206,7 +206,7 @@ func (c *AuthenticatedHostClient) DeleteAgent(ctx context.Context, hostID, hostE
 }
 
 // MessageAgent sends a message to an agent on a remote runtime host with HMAC authentication.
-func (c *AuthenticatedHostClient) MessageAgent(ctx context.Context, hostID, hostEndpoint, agentID, message string, interrupt bool) error {
+func (c *AuthenticatedHostClient) MessageAgent(ctx context.Context, brokerID, hostEndpoint, agentID, message string, interrupt bool) error {
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/message", strings.TrimSuffix(hostEndpoint, "/"), url.PathEscape(agentID))
 
 	body, err := json.Marshal(map[string]interface{}{
@@ -217,7 +217,7 @@ func (c *AuthenticatedHostClient) MessageAgent(ctx context.Context, hostID, host
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, hostID, http.MethodPost, endpoint, body)
+	resp, err := c.doRequest(ctx, brokerID, http.MethodPost, endpoint, body)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

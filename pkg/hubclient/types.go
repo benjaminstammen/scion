@@ -20,8 +20,8 @@ type Agent struct {
 	Image           string            `json:"image,omitempty"`
 	Detached        bool              `json:"detached,omitempty"`
 	Runtime         string            `json:"runtime,omitempty"`
-	RuntimeHostID   string            `json:"runtimeHostId,omitempty"`
-	RuntimeHostType string            `json:"runtimeHostType,omitempty"`
+	RuntimeBrokerID   string            `json:"runtimeBrokerId,omitempty"`
+	RuntimeBrokerType string            `json:"runtimeBrokerType,omitempty"`
 	WebPTYEnabled   bool              `json:"webPtyEnabled,omitempty"`
 	TaskSummary     string            `json:"taskSummary,omitempty"`
 	AppliedConfig   *AgentConfig      `json:"appliedConfig,omitempty"`
@@ -67,7 +67,7 @@ type Grove struct {
 	Name                 string             `json:"name"`
 	Slug                 string             `json:"slug"`
 	GitRemote            string             `json:"gitRemote,omitempty"`
-	DefaultRuntimeHostID string             `json:"defaultRuntimeHostId,omitempty"`
+	DefaultRuntimeBrokerID string             `json:"defaultRuntimeBrokerId,omitempty"`
 	Created              time.Time          `json:"created"`
 	Updated              time.Time          `json:"updated"`
 	CreatedBy            string             `json:"createdBy,omitempty"`
@@ -82,8 +82,8 @@ type Grove struct {
 
 // GroveContributor represents a host contributing to a grove.
 type GroveContributor struct {
-	HostID    string    `json:"hostId"`
-	HostName  string    `json:"hostName"`
+	BrokerID string    `json:"hostId"`
+	BrokerName string    `json:"brokerName"`
 	Mode      string    `json:"mode"`
 	Status    string    `json:"status"`
 	LastSeen  time.Time `json:"lastSeen,omitempty"`
@@ -107,8 +107,8 @@ type BucketConfig struct {
 	Prefix   string `json:"prefix,omitempty"`
 }
 
-// RuntimeHost represents a runtime host from the Hub API.
-type RuntimeHost struct {
+// RuntimeBroker represents a runtime host from the Hub API.
+type RuntimeBroker struct {
 	ID              string            `json:"id"`
 	Name            string            `json:"name"`
 	Slug            string            `json:"slug"`
@@ -117,25 +117,25 @@ type RuntimeHost struct {
 	Status          string            `json:"status"`
 	ConnectionState string            `json:"connectionState"`
 	LastHeartbeat   time.Time         `json:"lastHeartbeat,omitempty"`
-	Capabilities    *HostCapabilities `json:"capabilities,omitempty"`
-	Profiles        []HostProfile     `json:"profiles,omitempty"`
+	Capabilities    *BrokerCapabilities `json:"capabilities,omitempty"`
+	Profiles        []BrokerProfile     `json:"profiles,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`
 	Annotations     map[string]string `json:"annotations,omitempty"`
 	Endpoint        string            `json:"endpoint,omitempty"`
-	Groves          []HostGroveInfo   `json:"groves,omitempty"`
+	Groves          []BrokerGroveInfo   `json:"groves,omitempty"`
 	Created         time.Time         `json:"created"`
 	Updated         time.Time         `json:"updated"`
 }
 
-// HostCapabilities describes runtime host capabilities.
-type HostCapabilities struct {
+// BrokerCapabilities describes runtime host capabilities.
+type BrokerCapabilities struct {
 	WebPTY bool `json:"webPty"`
 	Sync   bool `json:"sync"`
 	Attach bool `json:"attach"`
 }
 
-// HostProfile describes a runtime profile available on a host.
-type HostProfile struct {
+// BrokerProfile describes a runtime profile available on a host.
+type BrokerProfile struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	Available bool   `json:"available"`
@@ -143,8 +143,8 @@ type HostProfile struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// HostGroveInfo describes a grove from a host's perspective.
-type HostGroveInfo struct {
+// BrokerGroveInfo describes a grove from a host's perspective.
+type BrokerGroveInfo struct {
 	GroveID    string `json:"groveId"`
 	GroveName  string `json:"groveName"`
 	GitRemote  string `json:"gitRemote,omitempty"`

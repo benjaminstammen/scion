@@ -17,7 +17,7 @@ import (
 
 // HMAC authentication headers (must match pkg/hub/hostauth.go).
 const (
-	HeaderHostID        = "X-Scion-Host-ID"
+	HeaderBrokerID        = "X-Scion-Broker-ID"
 	HeaderTimestamp     = "X-Scion-Timestamp"
 	HeaderNonce         = "X-Scion-Nonce"
 	HeaderSignature     = "X-Scion-Signature"
@@ -27,14 +27,14 @@ const (
 // HMACAuth implements HMAC-based authentication for Runtime Hosts.
 // This authenticator signs requests using the same algorithm as pkg/hub/hostauth.go.
 type HMACAuth struct {
-	HostID    string
+	BrokerID string
 	SecretKey []byte
 }
 
 // ApplyAuth adds HMAC authentication headers to the request.
 func (a *HMACAuth) ApplyAuth(req *http.Request) error {
-	if a.HostID == "" || len(a.SecretKey) == 0 {
-		return fmt.Errorf("HMAC auth requires hostID and secretKey")
+	if a.BrokerID == "" || len(a.SecretKey) == 0 {
+		return fmt.Errorf("HMAC auth requires brokerID and secretKey")
 	}
 
 	// 1. Generate timestamp (Unix epoch seconds as string)
@@ -48,7 +48,7 @@ func (a *HMACAuth) ApplyAuth(req *http.Request) error {
 	nonce := base64.URLEncoding.EncodeToString(nonceBytes)
 
 	// 3. Set headers before building canonical string
-	req.Header.Set(HeaderHostID, a.HostID)
+	req.Header.Set(HeaderBrokerID, a.BrokerID)
 	req.Header.Set(HeaderTimestamp, timestamp)
 	req.Header.Set(HeaderNonce, nonce)
 

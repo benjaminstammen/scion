@@ -177,15 +177,15 @@ func promptHubRegistration(isGlobal bool) error {
 		}
 
 		// Get hostname
-		hostName, _ := os.Hostname()
-		if hostName == "" {
-			hostName = "local-host"
+		brokerName, _ := os.Hostname()
+		if brokerName == "" {
+			brokerName = "local-host"
 		}
 
 		// Get existing host ID if available
-		var existingHostID string
+		var existingBrokerID string
 		if settings.Hub != nil {
-			existingHostID = settings.Hub.HostID
+			existingBrokerID = settings.Hub.BrokerID
 		}
 
 		// Register
@@ -196,8 +196,8 @@ func promptHubRegistration(isGlobal bool) error {
 			Path:      resolvedPath,
 			Mode:      "connected",
 			Host: &hubclient.HostInfo{
-				ID:   existingHostID,
-				Name: hostName,
+				ID:   existingBrokerID,
+				Name: brokerName,
 			},
 		}
 
@@ -215,8 +215,8 @@ func promptHubRegistration(isGlobal bool) error {
 		if globalErr != nil {
 			fmt.Printf("Warning: failed to get global directory: %v\n", globalErr)
 		} else {
-			if resp.HostToken != "" {
-				_ = config.UpdateSetting(globalDir, "hub.hostToken", resp.HostToken, true)
+			if resp.BrokerToken != "" {
+				_ = config.UpdateSetting(globalDir, "hub.brokerToken", resp.BrokerToken, true)
 			}
 			if resp.Host != nil && resp.Host.ID != "" {
 				_ = config.UpdateSetting(globalDir, "hub.hostId", resp.Host.ID, true)

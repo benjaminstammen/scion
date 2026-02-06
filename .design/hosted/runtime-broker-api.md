@@ -70,7 +70,7 @@ Runtime Host authentication uses **HMAC-based request signing** as the primary m
 
 | Header | Format | Description |
 |--------|--------|-------------|
-| `X-Scion-Host-ID` | UUID or slug | Unique identifier for the Runtime Host |
+| `X-Scion-Broker-ID` | UUID or slug | Unique identifier for the Runtime Host |
 | `X-Scion-Timestamp` | RFC 3339 | Request timestamp (e.g., `2025-01-30T12:00:00Z`) |
 | `X-Scion-Nonce` | Base64 (16 bytes) | Random nonce for replay prevention |
 | `X-Scion-Signature` | Base64 (32 bytes) | HMAC-SHA256 signature |

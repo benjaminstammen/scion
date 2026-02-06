@@ -20,19 +20,19 @@ type HealthResponse struct {
 	Checks  map[string]string `json:"checks,omitempty"`
 }
 
-// HostInfoResponse is the response for the /api/v1/info endpoint.
-type HostInfoResponse struct {
-	HostID       string            `json:"hostId"`
+// BrokerInfoResponse is the response for the /api/v1/info endpoint.
+type BrokerInfoResponse struct {
+	BrokerID string            `json:"hostId"`
 	Name         string            `json:"name,omitempty"`
 	Version      string            `json:"version"`
 	Mode         string            `json:"mode"`
-	Capabilities *HostCapabilities `json:"capabilities,omitempty"`
-	Profiles     []HostProfile     `json:"profiles,omitempty"`
+	Capabilities *BrokerCapabilities `json:"capabilities,omitempty"`
+	Profiles     []BrokerProfile     `json:"profiles,omitempty"`
 	Groves       []GroveInfo       `json:"groves,omitempty"`
 }
 
-// HostProfile describes a runtime profile available on a host.
-type HostProfile struct {
+// BrokerProfile describes a runtime profile available on a host.
+type BrokerProfile struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	Available bool   `json:"available"`
@@ -40,8 +40,8 @@ type HostProfile struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// HostCapabilities describes what this runtime host can do.
-type HostCapabilities struct {
+// BrokerCapabilities describes what this runtime host can do.
+type BrokerCapabilities struct {
 	WebPTY bool `json:"webPty"`
 	Sync   bool `json:"sync"`
 	Attach bool `json:"attach"`

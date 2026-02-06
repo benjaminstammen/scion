@@ -86,14 +86,14 @@ func (s *Server) handleAgentPTY(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if agent has a runtime host
-	if agent.RuntimeHostID == "" {
+	if agent.RuntimeBrokerID == "" {
 		writeError(w, http.StatusUnprocessableEntity, ErrCodeNoRuntimeHost,
 			"Agent has no runtime host", nil)
 		return
 	}
 
 	// Check if host is connected via control channel
-	if s.controlChannel == nil || !s.controlChannel.IsConnected(agent.RuntimeHostID) {
+	if s.controlChannel == nil || !s.controlChannel.IsConnected(agent.RuntimeBrokerID) {
 		writeError(w, http.StatusServiceUnavailable, ErrCodeRuntimeHostUnavail,
 			"Runtime host not connected", nil)
 		return
@@ -107,7 +107,7 @@ func (s *Server) handleAgentPTY(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create PTY session
-	session := newPTYSession(ctx, agentID, agent.RuntimeHostID, conn, s.controlChannel)
+	session := newPTYSession(ctx, agentID, agent.RuntimeBrokerID, conn, s.controlChannel)
 	defer session.Close()
 
 	slog.Info("PTY session started", "agentID", agentID, "user", identity.ID())
@@ -150,7 +150,7 @@ type PTYSession struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	agentID       string
-	hostID        string
+	brokerID        string
 	conn          *websocket.Conn
 	controlChan   *ControlChannelManager
 	stream        *StreamProxy
@@ -160,13 +160,13 @@ type PTYSession struct {
 }
 
 // newPTYSession creates a new PTY session.
-func newPTYSession(ctx context.Context, agentID, hostID string, conn *websocket.Conn, cc *ControlChannelManager) *PTYSession {
+func newPTYSession(ctx context.Context, agentID, brokerID string, conn *websocket.Conn, cc *ControlChannelManager) *PTYSession {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PTYSession{
 		ctx:         ctx,
 		cancel:      cancel,
 		agentID:     agentID,
-		hostID:      hostID,
+		brokerID:      brokerID,
 		conn:        conn,
 		controlChan: cc,
 	}
@@ -179,7 +179,7 @@ func (s *PTYSession) Run() error {
 	rows := 24
 
 	// Open stream to host
-	stream, err := s.controlChan.OpenStream(s.ctx, s.hostID, wsprotocol.StreamTypePTY, s.agentID, cols, rows)
+	stream, err := s.controlChan.OpenStream(s.ctx, s.brokerID, wsprotocol.StreamTypePTY, s.agentID, cols, rows)
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (s *PTYSession) readFromClient() error {
 				continue
 			}
 			// Forward data to host via stream
-			if err := s.controlChan.SendStreamData(s.hostID, s.stream.streamID, msg.Data); err != nil {
+			if err := s.controlChan.SendStreamData(s.brokerID, s.stream.streamID, msg.Data); err != nil {
 				return err
 			}
 
@@ -323,7 +323,7 @@ func (s *PTYSession) Close() {
 
 	// Close stream to host
 	if s.stream != nil {
-		s.controlChan.CloseStream(s.hostID, s.stream.streamID, "session closed")
+		s.controlChan.CloseStream(s.brokerID, s.stream.streamID, "session closed")
 	}
 
 	// Close client WebSocket

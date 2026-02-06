@@ -287,10 +287,10 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 			"groveId":       settings.GroveID,
 		}
 		if settings.Hub != nil {
-			status["hostId"] = settings.Hub.HostID
+			status["hostId"] = settings.Hub.BrokerID
 			status["hasToken"] = settings.Hub.Token != ""
 			status["hasApiKey"] = settings.Hub.APIKey != ""
-			status["hasHostToken"] = settings.Hub.HostToken != ""
+			status["hasHostToken"] = settings.Hub.BrokerToken != ""
 		}
 
 		// Add auth info to JSON output
@@ -344,7 +344,7 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 	// Show grove_id from top-level setting (where it's now stored)
 	fmt.Printf("Grove ID:   %s\n", valueOrNone(settings.GroveID))
 	if settings.Hub != nil {
-		fmt.Printf("Host ID:    %s\n", valueOrNone(settings.Hub.HostID))
+		fmt.Printf("Host ID:    %s\n", valueOrNone(settings.Hub.BrokerID))
 	}
 
 	// Authentication status section
@@ -473,9 +473,9 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get hostname (always use system hostname to prevent duplicates)
-	hostName, err := os.Hostname()
+	brokerName, err := os.Hostname()
 	if err != nil {
-		hostName = "local-host"
+		brokerName = "local-host"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -486,23 +486,23 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 	// Phase 2: Complete host join to get HMAC secret
 	// Phase 3: Register grove with host ID
 
-	credStore := hostcredentials.NewStore("")
+	credStore := brokercredentials.NewStore("")
 	existingCreds, credErr := credStore.Load()
 
-	var hostID string
+	var brokerID string
 	var needsJoin bool
 
 	// Check if we already have valid credentials
-	if credErr == nil && existingCreds != nil && existingCreds.HostID != "" && !hubForceRegister {
+	if credErr == nil && existingCreds != nil && existingCreds.BrokerID != "" && !hubForceRegister {
 		// Existing credentials found - verify they're still valid
-		hostID = existingCreds.HostID
-		fmt.Printf("Using existing host credentials (hostId: %s)\n", hostID)
+		brokerID = existingCreds.BrokerID
+		fmt.Printf("Using existing host credentials (hostId: %s)\n", brokerID)
 
 		// Verify the host still exists on the hub
-		_, err := client.RuntimeHosts().Get(ctx, hostID)
+		_, err := client.RuntimeBrokers().Get(ctx, brokerID)
 		if err != nil {
 			fmt.Printf("Warning: existing host not found on Hub, will re-register\n")
-			hostID = ""
+			brokerID = ""
 			needsJoin = true
 		}
 	} else {
@@ -510,30 +510,30 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 	}
 
 	// Phase 1 & 2: Create host and complete join if needed
-	if needsJoin || hostID == "" {
+	if needsJoin || brokerID == "" {
 		fmt.Printf("Registering host with Hub...\n")
 
 		// Phase 1: Create host registration
-		createReq := &hubclient.CreateHostRequest{
-			Name: hostName,
+		createReq := &hubclient.CreateBrokerRequest{
+			Name: brokerName,
 			Capabilities: []string{
 				"sync",
 				"attach",
 			},
 		}
 
-		createResp, err := client.RuntimeHosts().Create(ctx, createReq)
+		createResp, err := client.RuntimeBrokers().Create(ctx, createReq)
 		if err != nil {
 			return fmt.Errorf("failed to create host registration: %w", err)
 		}
 
-		fmt.Printf("Host created (ID: %s), completing join...\n", createResp.HostID)
+		fmt.Printf("Host created (ID: %s), completing join...\n", createResp.BrokerID)
 
 		// Phase 2: Complete host join with join token
-		joinReq := &hubclient.JoinHostRequest{
-			HostID:    createResp.HostID,
+		joinReq := &hubclient.JoinBrokerRequest{
+			BrokerID:    createResp.BrokerID,
 			JoinToken: createResp.JoinToken,
-			Hostname:  hostName,
+			Hostname:  brokerName,
 			Version:   version.Version,
 			Capabilities: []string{
 				"sync",
@@ -541,15 +541,15 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 			},
 		}
 
-		joinResp, err := client.RuntimeHosts().Join(ctx, joinReq)
+		joinResp, err := client.RuntimeBrokers().Join(ctx, joinReq)
 		if err != nil {
 			return fmt.Errorf("failed to complete host join: %w", err)
 		}
 
-		hostID = joinResp.HostID
+		brokerID = joinResp.BrokerID
 
 		// Save credentials
-		if err := credStore.SaveFromJoinResponse(hostID, joinResp.SecretKey, endpoint); err != nil {
+		if err := credStore.SaveFromJoinResponse(brokerID, joinResp.SecretKey, endpoint); err != nil {
 			fmt.Printf("Warning: failed to save host credentials: %v\n", err)
 		} else {
 			fmt.Printf("Host credentials saved to %s\n", credStore.Path())
@@ -562,7 +562,7 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 		Name:      groveName,
 		GitRemote: util.NormalizeGitRemote(gitRemote),
 		Path:      resolvedPath,
-		HostID:    hostID, // Link to the registered host
+		BrokerID:    brokerID, // Link to the registered host
 		Mode:      hubRegisterMode,
 	}
 
@@ -572,12 +572,12 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save hub settings to GLOBAL settings since registration is a host-level operation.
-	// The RuntimeHost server reads from global settings to know which Hub to connect to.
+	// The RuntimeBroker server reads from global settings to know which Hub to connect to.
 	globalDir, err := config.GetGlobalDir()
 	if err != nil {
 		fmt.Printf("Warning: failed to get global directory: %v\n", err)
 	} else {
-		// Save the hub endpoint so RuntimeHost knows where to connect
+		// Save the hub endpoint so RuntimeBroker knows where to connect
 		if endpoint != "" {
 			if err := config.UpdateSetting(globalDir, "hub.endpoint", endpoint, true); err != nil {
 				fmt.Printf("Warning: failed to save hub endpoint to global settings: %v\n", err)
@@ -585,7 +585,7 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 		}
 
 		// Save the host ID to global settings
-		if err := config.UpdateSetting(globalDir, "hub.hostId", hostID, true); err != nil {
+		if err := config.UpdateSetting(globalDir, "hub.hostId", brokerID, true); err != nil {
 			fmt.Printf("Warning: failed to save host ID: %v\n", err)
 		}
 	}
@@ -605,7 +605,7 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 	if resp.Host != nil {
 		fmt.Printf("Host registered: %s (ID: %s)\n", resp.Host.Name, resp.Host.ID)
 	} else {
-		fmt.Printf("Host linked: %s\n", hostID)
+		fmt.Printf("Host linked: %s\n", brokerID)
 	}
 
 	return nil
@@ -623,7 +623,7 @@ func runHubDeregister(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load settings: %w", err)
 	}
 
-	if settings.Hub == nil || settings.Hub.HostID == "" {
+	if settings.Hub == nil || settings.Hub.BrokerID == "" {
 		return fmt.Errorf("no host registration found")
 	}
 
@@ -635,9 +635,9 @@ func runHubDeregister(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	hostID := settings.Hub.HostID
+	brokerID := settings.Hub.BrokerID
 
-	if err := client.RuntimeHosts().Delete(ctx, hostID); err != nil {
+	if err := client.RuntimeBrokers().Delete(ctx, brokerID); err != nil {
 		return fmt.Errorf("deregistration failed: %w", err)
 	}
 
@@ -647,11 +647,11 @@ func runHubDeregister(cmd *cobra.Command, args []string) error {
 	if globalErr != nil {
 		fmt.Printf("Warning: failed to get global directory: %v\n", globalErr)
 	} else {
-		_ = config.UpdateSetting(globalDir, "hub.hostToken", "", true)
+		_ = config.UpdateSetting(globalDir, "hub.brokerToken", "", true)
 		_ = config.UpdateSetting(globalDir, "hub.hostId", "", true)
 	}
 
-	fmt.Printf("Host %s deregistered from Hub\n", hostID)
+	fmt.Printf("Host %s deregistered from Hub\n", brokerID)
 	return nil
 }
 
@@ -724,7 +724,7 @@ func runHubHosts(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := client.RuntimeHosts().List(ctx, nil)
+	resp, err := client.RuntimeBrokers().List(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to list hosts: %w", err)
 	}

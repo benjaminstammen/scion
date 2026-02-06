@@ -552,7 +552,7 @@ Upsert endpoint for Runtime Hosts in read-only mode to register locally-created 
 ```
 
 **Headers (HMAC Authentication):**
-- `X-Scion-Host-ID`: Runtime host identifier
+- `X-Scion-Broker-ID`: Runtime host identifier
 - `X-Scion-Timestamp`: Request timestamp (RFC 3339)
 - `X-Scion-Nonce`: Random nonce for replay prevention
 - `X-Scion-Signature`: HMAC-SHA256 signature
@@ -858,7 +858,7 @@ Internal endpoint for runtime hosts to report health.
 ```
 
 **Headers (HMAC Authentication):**
-- `X-Scion-Host-ID`: Runtime host identifier
+- `X-Scion-Broker-ID`: Runtime host identifier
 - `X-Scion-Timestamp`: Request timestamp (RFC 3339)
 - `X-Scion-Nonce`: Random nonce for replay prevention
 - `X-Scion-Signature`: HMAC-SHA256 signature
@@ -1374,7 +1374,7 @@ All error responses follow a consistent format:
 
 4. **Host HMAC Authentication** (Runtime Host ↔ Hub)
    ```
-   X-Scion-Host-ID: <host-id>
+   X-Scion-Broker-ID: <host-id>
    X-Scion-Timestamp: <RFC 3339 timestamp>
    X-Scion-Nonce: <base64-encoded nonce>
    X-Scion-Signature: <HMAC-SHA256 signature>
@@ -1491,7 +1491,7 @@ WS /api/v1/runtime-hosts/connect
 Runtime Host initiates a persistent WebSocket connection to the Hub. The host must have already completed the registration flow and obtained a shared secret.
 
 **Headers (HMAC Authentication):**
-- `X-Scion-Host-ID`: Host identifier
+- `X-Scion-Broker-ID`: Host identifier
 - `X-Scion-Timestamp`: Request timestamp (RFC 3339)
 - `X-Scion-Nonce`: Random nonce for replay prevention
 - `X-Scion-Signature`: HMAC-SHA256 signature of the WebSocket upgrade request

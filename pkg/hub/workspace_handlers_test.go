@@ -401,7 +401,7 @@ func TestWorkspaceSyncFromHandler_StorageNotConfigured(t *testing.T) {
 	// Create the grove first
 	createTestGrove(t, s, groveID)
 
-	// Create a running agent (no RuntimeHostID to avoid FK constraint)
+	// Create a running agent (no RuntimeBrokerID to avoid FK constraint)
 	agent := &store.Agent{
 		ID:           agentID,
 		AgentID:      "no-storage-agent",
@@ -803,12 +803,12 @@ func TestHostError_Error(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "with hostID",
-			err:      &hostError{hostID: "host-123", msg: "connection failed"},
+			name:     "with brokerID",
+			err:      &hostError{brokerID: "host-123", msg: "connection failed"},
 			expected: "host host-123: connection failed",
 		},
 		{
-			name:     "without hostID",
+			name:     "without brokerID",
 			err:      &hostError{statusCode: 500, msg: "internal error"},
 			expected: "internal error",
 		},

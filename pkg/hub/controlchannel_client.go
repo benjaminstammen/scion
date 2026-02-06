@@ -10,7 +10,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/wsprotocol"
 )
 
-// ControlChannelHostClient implements RuntimeHostClient by tunneling requests
+// ControlChannelHostClient implements RuntimeBrokerClient by tunneling requests
 // through the control channel WebSocket connection.
 type ControlChannelHostClient struct {
 	manager *ControlChannelManager
@@ -26,7 +26,7 @@ func NewControlChannelHostClient(manager *ControlChannelManager, debug bool) *Co
 }
 
 // CreateAgent creates an agent via control channel.
-func (c *ControlChannelHostClient) CreateAgent(ctx context.Context, hostID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
+func (c *ControlChannelHostClient) CreateAgent(ctx context.Context, brokerID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
 	_ = hostEndpoint // Unused - we tunnel through control channel
 
 	body, err := json.Marshal(req)
@@ -34,7 +34,7 @@ func (c *ControlChannelHostClient) CreateAgent(ctx context.Context, hostID, host
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := c.doRequest(ctx, hostID, "POST", "/api/v1/agents", "", body)
+	resp, err := c.doRequest(ctx, brokerID, "POST", "/api/v1/agents", "", body)
 	if err != nil {
 		return nil, err
 	}
@@ -48,35 +48,35 @@ func (c *ControlChannelHostClient) CreateAgent(ctx context.Context, hostID, host
 }
 
 // StartAgent starts an agent via control channel.
-func (c *ControlChannelHostClient) StartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
+func (c *ControlChannelHostClient) StartAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
 	_ = hostEndpoint
 	path := fmt.Sprintf("/api/v1/agents/%s/start", agentID)
-	_, err := c.doRequest(ctx, hostID, "POST", path, "", nil)
+	_, err := c.doRequest(ctx, brokerID, "POST", path, "", nil)
 	return err
 }
 
 // StopAgent stops an agent via control channel.
-func (c *ControlChannelHostClient) StopAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
+func (c *ControlChannelHostClient) StopAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
 	_ = hostEndpoint
 	path := fmt.Sprintf("/api/v1/agents/%s/stop", agentID)
-	_, err := c.doRequest(ctx, hostID, "POST", path, "", nil)
+	_, err := c.doRequest(ctx, brokerID, "POST", path, "", nil)
 	return err
 }
 
 // RestartAgent restarts an agent via control channel.
-func (c *ControlChannelHostClient) RestartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
+func (c *ControlChannelHostClient) RestartAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
 	_ = hostEndpoint
 	path := fmt.Sprintf("/api/v1/agents/%s/restart", agentID)
-	_, err := c.doRequest(ctx, hostID, "POST", path, "", nil)
+	_, err := c.doRequest(ctx, brokerID, "POST", path, "", nil)
 	return err
 }
 
 // DeleteAgent deletes an agent via control channel.
-func (c *ControlChannelHostClient) DeleteAgent(ctx context.Context, hostID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
+func (c *ControlChannelHostClient) DeleteAgent(ctx context.Context, brokerID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
 	_ = hostEndpoint
 	path := fmt.Sprintf("/api/v1/agents/%s", agentID)
 	query := fmt.Sprintf("deleteFiles=%t&removeBranch=%t", deleteFiles, removeBranch)
-	resp, err := c.doRequest(ctx, hostID, "DELETE", path, query, nil)
+	resp, err := c.doRequest(ctx, brokerID, "DELETE", path, query, nil)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (c *ControlChannelHostClient) DeleteAgent(ctx context.Context, hostID, host
 }
 
 // MessageAgent sends a message to an agent via control channel.
-func (c *ControlChannelHostClient) MessageAgent(ctx context.Context, hostID, hostEndpoint, agentID, message string, interrupt bool) error {
+func (c *ControlChannelHostClient) MessageAgent(ctx context.Context, brokerID, hostEndpoint, agentID, message string, interrupt bool) error {
 	_ = hostEndpoint
 	path := fmt.Sprintf("/api/v1/agents/%s/message", agentID)
 
@@ -100,14 +100,14 @@ func (c *ControlChannelHostClient) MessageAgent(ctx context.Context, hostID, hos
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	_, err = c.doRequest(ctx, hostID, "POST", path, "", body)
+	_, err = c.doRequest(ctx, brokerID, "POST", path, "", body)
 	return err
 }
 
 // doRequest tunnels an HTTP request through the control channel.
-func (c *ControlChannelHostClient) doRequest(ctx context.Context, hostID, method, path, query string, body []byte) (*wsprotocol.ResponseEnvelope, error) {
-	if !c.manager.IsConnected(hostID) {
-		return nil, fmt.Errorf("host %s not connected via control channel", hostID)
+func (c *ControlChannelHostClient) doRequest(ctx context.Context, brokerID, method, path, query string, body []byte) (*wsprotocol.ResponseEnvelope, error) {
+	if !c.manager.IsConnected(brokerID) {
+		return nil, fmt.Errorf("host %s not connected via control channel", brokerID)
 	}
 
 	headers := map[string]string{
@@ -115,7 +115,7 @@ func (c *ControlChannelHostClient) doRequest(ctx context.Context, hostID, method
 	}
 
 	req := wsprotocol.NewRequestEnvelope(uuid.New().String(), method, path, query, headers, body)
-	resp, err := c.manager.TunnelRequest(ctx, hostID, req)
+	resp, err := c.manager.TunnelRequest(ctx, brokerID, req)
 	if err != nil {
 		return nil, fmt.Errorf("control channel request failed: %w", err)
 	}
@@ -130,12 +130,12 @@ func (c *ControlChannelHostClient) doRequest(ctx context.Context, hostID, method
 // HybridHostClient tries control channel first, falls back to HTTP.
 type HybridHostClient struct {
 	controlChannel *ControlChannelHostClient
-	httpClient     RuntimeHostClient
+	httpClient     RuntimeBrokerClient
 	debug          bool
 }
 
 // NewHybridHostClient creates a hybrid client that prefers control channel.
-func NewHybridHostClient(manager *ControlChannelManager, httpClient RuntimeHostClient, debug bool) *HybridHostClient {
+func NewHybridHostClient(manager *ControlChannelManager, httpClient RuntimeBrokerClient, debug bool) *HybridHostClient {
 	return &HybridHostClient{
 		controlChannel: NewControlChannelHostClient(manager, debug),
 		httpClient:     httpClient,
@@ -144,54 +144,54 @@ func NewHybridHostClient(manager *ControlChannelManager, httpClient RuntimeHostC
 }
 
 // useControlChannel returns true if we should use control channel for this host.
-func (c *HybridHostClient) useControlChannel(hostID string) bool {
-	return c.controlChannel.manager.IsConnected(hostID)
+func (c *HybridHostClient) useControlChannel(brokerID string) bool {
+	return c.controlChannel.manager.IsConnected(brokerID)
 }
 
 // CreateAgent creates an agent, preferring control channel.
-func (c *HybridHostClient) CreateAgent(ctx context.Context, hostID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
-	if c.useControlChannel(hostID) {
-		return c.controlChannel.CreateAgent(ctx, hostID, hostEndpoint, req)
+func (c *HybridHostClient) CreateAgent(ctx context.Context, brokerID, hostEndpoint string, req *RemoteCreateAgentRequest) (*RemoteAgentResponse, error) {
+	if c.useControlChannel(brokerID) {
+		return c.controlChannel.CreateAgent(ctx, brokerID, hostEndpoint, req)
 	}
-	return c.httpClient.CreateAgent(ctx, hostID, hostEndpoint, req)
+	return c.httpClient.CreateAgent(ctx, brokerID, hostEndpoint, req)
 }
 
 // StartAgent starts an agent, preferring control channel.
-func (c *HybridHostClient) StartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
-	if c.useControlChannel(hostID) {
-		return c.controlChannel.StartAgent(ctx, hostID, hostEndpoint, agentID)
+func (c *HybridHostClient) StartAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
+	if c.useControlChannel(brokerID) {
+		return c.controlChannel.StartAgent(ctx, brokerID, hostEndpoint, agentID)
 	}
-	return c.httpClient.StartAgent(ctx, hostID, hostEndpoint, agentID)
+	return c.httpClient.StartAgent(ctx, brokerID, hostEndpoint, agentID)
 }
 
 // StopAgent stops an agent, preferring control channel.
-func (c *HybridHostClient) StopAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
-	if c.useControlChannel(hostID) {
-		return c.controlChannel.StopAgent(ctx, hostID, hostEndpoint, agentID)
+func (c *HybridHostClient) StopAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
+	if c.useControlChannel(brokerID) {
+		return c.controlChannel.StopAgent(ctx, brokerID, hostEndpoint, agentID)
 	}
-	return c.httpClient.StopAgent(ctx, hostID, hostEndpoint, agentID)
+	return c.httpClient.StopAgent(ctx, brokerID, hostEndpoint, agentID)
 }
 
 // RestartAgent restarts an agent, preferring control channel.
-func (c *HybridHostClient) RestartAgent(ctx context.Context, hostID, hostEndpoint, agentID string) error {
-	if c.useControlChannel(hostID) {
-		return c.controlChannel.RestartAgent(ctx, hostID, hostEndpoint, agentID)
+func (c *HybridHostClient) RestartAgent(ctx context.Context, brokerID, hostEndpoint, agentID string) error {
+	if c.useControlChannel(brokerID) {
+		return c.controlChannel.RestartAgent(ctx, brokerID, hostEndpoint, agentID)
 	}
-	return c.httpClient.RestartAgent(ctx, hostID, hostEndpoint, agentID)
+	return c.httpClient.RestartAgent(ctx, brokerID, hostEndpoint, agentID)
 }
 
 // DeleteAgent deletes an agent, preferring control channel.
-func (c *HybridHostClient) DeleteAgent(ctx context.Context, hostID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
-	if c.useControlChannel(hostID) {
-		return c.controlChannel.DeleteAgent(ctx, hostID, hostEndpoint, agentID, deleteFiles, removeBranch)
+func (c *HybridHostClient) DeleteAgent(ctx context.Context, brokerID, hostEndpoint, agentID string, deleteFiles, removeBranch bool) error {
+	if c.useControlChannel(brokerID) {
+		return c.controlChannel.DeleteAgent(ctx, brokerID, hostEndpoint, agentID, deleteFiles, removeBranch)
 	}
-	return c.httpClient.DeleteAgent(ctx, hostID, hostEndpoint, agentID, deleteFiles, removeBranch)
+	return c.httpClient.DeleteAgent(ctx, brokerID, hostEndpoint, agentID, deleteFiles, removeBranch)
 }
 
 // MessageAgent sends a message to an agent, preferring control channel.
-func (c *HybridHostClient) MessageAgent(ctx context.Context, hostID, hostEndpoint, agentID, message string, interrupt bool) error {
-	if c.useControlChannel(hostID) {
-		return c.controlChannel.MessageAgent(ctx, hostID, hostEndpoint, agentID, message, interrupt)
+func (c *HybridHostClient) MessageAgent(ctx context.Context, brokerID, hostEndpoint, agentID, message string, interrupt bool) error {
+	if c.useControlChannel(brokerID) {
+		return c.controlChannel.MessageAgent(ctx, brokerID, hostEndpoint, agentID, message, interrupt)
 	}
-	return c.httpClient.MessageAgent(ctx, hostID, hostEndpoint, agentID, message, interrupt)
+	return c.httpClient.MessageAgent(ctx, brokerID, hostEndpoint, agentID, message, interrupt)
 }

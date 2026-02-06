@@ -7,68 +7,68 @@ import (
 	"github.com/ptone/scion-agent/pkg/apiclient"
 )
 
-// RuntimeHostService handles runtime host operations.
-type RuntimeHostService interface {
+// RuntimeBrokerService handles runtime host operations.
+type RuntimeBrokerService interface {
 	// Create creates a new host registration and returns a join token.
 	// The join token must be used with Join() to complete registration.
-	Create(ctx context.Context, req *CreateHostRequest) (*CreateHostResponse, error)
+	Create(ctx context.Context, req *CreateBrokerRequest) (*CreateBrokerResponse, error)
 
 	// Join completes host registration using a join token.
 	// Returns the HMAC secret key for future authentication.
-	Join(ctx context.Context, req *JoinHostRequest) (*JoinHostResponse, error)
+	Join(ctx context.Context, req *JoinBrokerRequest) (*JoinBrokerResponse, error)
 
 	// List returns runtime hosts matching the filter criteria.
-	List(ctx context.Context, opts *ListHostsOptions) (*ListHostsResponse, error)
+	List(ctx context.Context, opts *ListBrokersOptions) (*ListBrokersResponse, error)
 
 	// Get returns a single runtime host by ID.
-	Get(ctx context.Context, hostID string) (*RuntimeHost, error)
+	Get(ctx context.Context, brokerID string) (*RuntimeBroker, error)
 
 	// Update updates host metadata.
-	Update(ctx context.Context, hostID string, req *UpdateHostRequest) (*RuntimeHost, error)
+	Update(ctx context.Context, brokerID string, req *UpdateBrokerRequest) (*RuntimeBroker, error)
 
 	// Delete removes a host from all groves.
-	Delete(ctx context.Context, hostID string) error
+	Delete(ctx context.Context, brokerID string) error
 
 	// ListGroves returns groves this host contributes to.
-	ListGroves(ctx context.Context, hostID string) (*ListHostGrovesResponse, error)
+	ListGroves(ctx context.Context, brokerID string) (*ListBrokerGrovesResponse, error)
 
 	// Heartbeat sends a heartbeat for a host.
-	Heartbeat(ctx context.Context, hostID string, status *HostHeartbeat) error
+	Heartbeat(ctx context.Context, brokerID string, status *BrokerHeartbeat) error
 }
 
-// runtimeHostService is the implementation of RuntimeHostService.
-type runtimeHostService struct {
+// runtimeBrokerService is the implementation of RuntimeBrokerService.
+type runtimeBrokerService struct {
 	c *client
 }
 
-// ListHostsOptions configures runtime host list filtering.
-type ListHostsOptions struct {
+// ListBrokersOptions configures runtime host list filtering.
+type ListBrokersOptions struct {
 	Status  string // Filter by status (online, offline)
 	Mode    string // Filter by mode (connected, read-only)
 	GroveID string // Filter by grove contribution
 	Page    apiclient.PageOptions
 }
 
-// ListHostsResponse is the response from listing runtime hosts.
-type ListHostsResponse struct {
-	Hosts []RuntimeHost
+// ListBrokersResponse is the response from listing runtime hosts.
+type ListBrokersResponse struct {
+	Hosts []RuntimeBroker
 	Page  apiclient.PageResult
 }
 
-// UpdateHostRequest is the request for updating a runtime host.
-type UpdateHostRequest struct {
+// UpdateBrokerRequest is the request for updating a runtime host.
+type UpdateBrokerRequest struct {
 	Name        string            `json:"name,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// ListHostGrovesResponse is the response from listing host groves.
-type ListHostGrovesResponse struct {
-	Groves []HostGroveInfo `json:"groves"`
+// ListBrokerGrovesResponse is the response from listing host groves.
+type ListBrokerGrovesResponse struct {
+	Groves []BrokerGroveInfo `json:"groves"`
 }
 
-// HostHeartbeat is the heartbeat payload.
-type HostHeartbeat struct {
+// BrokerHeartbeat is the heartbeat payload.
+type BrokerHeartbeat struct {
 	Status string           `json:"status"`
 	Groves []GroveHeartbeat `json:"groves,omitempty"`
 }
@@ -87,56 +87,56 @@ type AgentHeartbeat struct {
 	ContainerStatus string `json:"containerStatus,omitempty"`
 }
 
-// CreateHostRequest is the request to create a new host registration.
-type CreateHostRequest struct {
+// CreateBrokerRequest is the request to create a new host registration.
+type CreateBrokerRequest struct {
 	Name         string            `json:"name"`
 	Capabilities []string          `json:"capabilities,omitempty"`
 	Labels       map[string]string `json:"labels,omitempty"`
 }
 
-// CreateHostResponse is returned when creating a new host.
-type CreateHostResponse struct {
-	HostID    string `json:"hostId"`
+// CreateBrokerResponse is returned when creating a new host.
+type CreateBrokerResponse struct {
+	BrokerID string `json:"hostId"`
 	JoinToken string `json:"joinToken"`
 	ExpiresAt string `json:"expiresAt"`
 }
 
-// JoinHostRequest is the request to complete host registration.
-type JoinHostRequest struct {
-	HostID       string   `json:"hostId"`
+// JoinBrokerRequest is the request to complete host registration.
+type JoinBrokerRequest struct {
+	BrokerID string   `json:"hostId"`
 	JoinToken    string   `json:"joinToken"`
 	Hostname     string   `json:"hostname"`
 	Version      string   `json:"version"`
 	Capabilities []string `json:"capabilities,omitempty"`
 }
 
-// JoinHostResponse is returned after completing host registration.
-type JoinHostResponse struct {
+// JoinBrokerResponse is returned after completing host registration.
+type JoinBrokerResponse struct {
 	SecretKey   string `json:"secretKey"` // Base64-encoded HMAC secret
 	HubEndpoint string `json:"hubEndpoint"`
-	HostID      string `json:"hostId"`
+	BrokerID string `json:"hostId"`
 }
 
 // Create creates a new host registration and returns a join token.
-func (s *runtimeHostService) Create(ctx context.Context, req *CreateHostRequest) (*CreateHostResponse, error) {
+func (s *runtimeBrokerService) Create(ctx context.Context, req *CreateBrokerRequest) (*CreateBrokerResponse, error) {
 	resp, err := s.c.transport.Post(ctx, "/api/v1/hosts", req, nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[CreateHostResponse](resp)
+	return apiclient.DecodeResponse[CreateBrokerResponse](resp)
 }
 
 // Join completes host registration using a join token.
-func (s *runtimeHostService) Join(ctx context.Context, req *JoinHostRequest) (*JoinHostResponse, error) {
+func (s *runtimeBrokerService) Join(ctx context.Context, req *JoinBrokerRequest) (*JoinBrokerResponse, error) {
 	resp, err := s.c.transport.Post(ctx, "/api/v1/hosts/join", req, nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[JoinHostResponse](resp)
+	return apiclient.DecodeResponse[JoinBrokerResponse](resp)
 }
 
 // List returns runtime hosts matching the filter criteria.
-func (s *runtimeHostService) List(ctx context.Context, opts *ListHostsOptions) (*ListHostsResponse, error) {
+func (s *runtimeBrokerService) List(ctx context.Context, opts *ListBrokersOptions) (*ListBrokersResponse, error) {
 	query := url.Values{}
 	if opts != nil {
 		if opts.Status != "" {
@@ -157,7 +157,7 @@ func (s *runtimeHostService) List(ctx context.Context, opts *ListHostsOptions) (
 	}
 
 	type listResponse struct {
-		Hosts      []RuntimeHost `json:"hosts"`
+		Hosts      []RuntimeBroker `json:"hosts"`
 		NextCursor string        `json:"nextCursor,omitempty"`
 		TotalCount int           `json:"totalCount,omitempty"`
 	}
@@ -167,7 +167,7 @@ func (s *runtimeHostService) List(ctx context.Context, opts *ListHostsOptions) (
 		return nil, err
 	}
 
-	return &ListHostsResponse{
+	return &ListBrokersResponse{
 		Hosts: result.Hosts,
 		Page: apiclient.PageResult{
 			NextCursor: result.NextCursor,
@@ -177,26 +177,26 @@ func (s *runtimeHostService) List(ctx context.Context, opts *ListHostsOptions) (
 }
 
 // Get returns a single runtime host by ID.
-func (s *runtimeHostService) Get(ctx context.Context, hostID string) (*RuntimeHost, error) {
-	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-hosts/"+hostID, nil)
+func (s *runtimeBrokerService) Get(ctx context.Context, brokerID string) (*RuntimeBroker, error) {
+	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-hosts/"+brokerID, nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[RuntimeHost](resp)
+	return apiclient.DecodeResponse[RuntimeBroker](resp)
 }
 
 // Update updates host metadata.
-func (s *runtimeHostService) Update(ctx context.Context, hostID string, req *UpdateHostRequest) (*RuntimeHost, error) {
-	resp, err := s.c.transport.Patch(ctx, "/api/v1/runtime-hosts/"+hostID, req, nil)
+func (s *runtimeBrokerService) Update(ctx context.Context, brokerID string, req *UpdateBrokerRequest) (*RuntimeBroker, error) {
+	resp, err := s.c.transport.Patch(ctx, "/api/v1/runtime-hosts/"+brokerID, req, nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[RuntimeHost](resp)
+	return apiclient.DecodeResponse[RuntimeBroker](resp)
 }
 
 // Delete removes a host from all groves.
-func (s *runtimeHostService) Delete(ctx context.Context, hostID string) error {
-	resp, err := s.c.transport.Delete(ctx, "/api/v1/runtime-hosts/"+hostID, nil)
+func (s *runtimeBrokerService) Delete(ctx context.Context, brokerID string) error {
+	resp, err := s.c.transport.Delete(ctx, "/api/v1/runtime-hosts/"+brokerID, nil)
 	if err != nil {
 		return err
 	}
@@ -204,17 +204,17 @@ func (s *runtimeHostService) Delete(ctx context.Context, hostID string) error {
 }
 
 // ListGroves returns groves this host contributes to.
-func (s *runtimeHostService) ListGroves(ctx context.Context, hostID string) (*ListHostGrovesResponse, error) {
-	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-hosts/"+hostID+"/groves", nil)
+func (s *runtimeBrokerService) ListGroves(ctx context.Context, brokerID string) (*ListBrokerGrovesResponse, error) {
+	resp, err := s.c.transport.Get(ctx, "/api/v1/runtime-hosts/"+brokerID+"/groves", nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[ListHostGrovesResponse](resp)
+	return apiclient.DecodeResponse[ListBrokerGrovesResponse](resp)
 }
 
 // Heartbeat sends a heartbeat for a host.
-func (s *runtimeHostService) Heartbeat(ctx context.Context, hostID string, status *HostHeartbeat) error {
-	resp, err := s.c.transport.Post(ctx, "/api/v1/runtime-hosts/"+hostID+"/heartbeat", status, nil)
+func (s *runtimeBrokerService) Heartbeat(ctx context.Context, brokerID string, status *BrokerHeartbeat) error {
+	resp, err := s.c.transport.Post(ctx, "/api/v1/runtime-hosts/"+brokerID+"/heartbeat", status, nil)
 	if err != nil {
 		return err
 	}

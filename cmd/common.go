@@ -26,7 +26,7 @@ var (
 	attach        bool
 	branch        string
 	workspace     string
-	runtimeHostID string
+	runtimeBrokerID string
 )
 
 // HubContext holds the context for Hub operations.
@@ -35,7 +35,7 @@ type HubContext struct {
 	Endpoint  string
 	Settings  *config.Settings
 	GroveID   string
-	HostID    string
+	BrokerID string
 	GrovePath string
 	IsGlobal  bool
 }
@@ -86,7 +86,7 @@ func CheckHubAvailabilityForAgent(grovePath, targetAgent string, skipSync bool) 
 		Endpoint:  hubCtx.Endpoint,
 		Settings:  hubCtx.Settings,
 		GroveID:   hubCtx.GroveID,
-		HostID:    hubCtx.HostID,
+		BrokerID:    hubCtx.BrokerID,
 		GrovePath: hubCtx.GrovePath,
 		IsGlobal:  hubCtx.IsGlobal,
 	}, nil
@@ -345,7 +345,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		Name:          agentName,
 		GroveID:       groveID,
 		Template:      resolvedTemplate,
-		RuntimeHostID: runtimeHostID,
+		RuntimeBrokerID: runtimeBrokerID,
 		Task:          task,
 		Branch:        branch,
 		Resume:        resume,
@@ -446,7 +446,7 @@ func createAgentWithHostResolution(ctx context.Context, hubCtx *HubContext, grov
 			}
 
 			selectedHost, _ := availableHosts[choice-1].(map[string]interface{})
-			req.RuntimeHostID, _ = selectedHost["id"].(string)
+			req.RuntimeBrokerID, _ = selectedHost["id"].(string)
 			break
 		}
 		// Loop and retry with selected host

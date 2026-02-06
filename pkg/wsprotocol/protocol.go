@@ -66,7 +66,7 @@ type Envelope struct {
 // ConnectMessage is sent by Runtime Host when establishing control channel.
 type ConnectMessage struct {
 	Type      string   `json:"type"` // Always "connect"
-	HostID    string   `json:"hostId"`
+	BrokerID string   `json:"hostId"`
 	Version   string   `json:"version"`
 	Groves    []string `json:"groves,omitempty"`    // Grove IDs this host serves
 	Timestamp int64    `json:"timestamp,omitempty"` // Unix timestamp
@@ -75,7 +75,7 @@ type ConnectMessage struct {
 // ConnectedMessage is sent by Hub to confirm successful connection.
 type ConnectedMessage struct {
 	Type           string `json:"type"` // Always "connected"
-	HostID         string `json:"hostId"`
+	BrokerID string `json:"hostId"`
 	SessionID      string `json:"sessionId"`      // Unique session identifier
 	PingIntervalMs int    `json:"pingIntervalMs"` // Expected ping interval
 }
@@ -206,10 +206,10 @@ func ParseEnvelope(data []byte) (*Envelope, error) {
 }
 
 // NewConnectMessage creates a connect message for a runtime host.
-func NewConnectMessage(hostID, version string, groves []string) *ConnectMessage {
+func NewConnectMessage(brokerID, version string, groves []string) *ConnectMessage {
 	return &ConnectMessage{
 		Type:      TypeConnect,
-		HostID:    hostID,
+		BrokerID:    brokerID,
 		Version:   version,
 		Groves:    groves,
 		Timestamp: time.Now().Unix(),
@@ -217,10 +217,10 @@ func NewConnectMessage(hostID, version string, groves []string) *ConnectMessage 
 }
 
 // NewConnectedMessage creates a connected response.
-func NewConnectedMessage(hostID, sessionID string, pingIntervalMs int) *ConnectedMessage {
+func NewConnectedMessage(brokerID, sessionID string, pingIntervalMs int) *ConnectedMessage {
 	return &ConnectedMessage{
 		Type:           TypeConnected,
-		HostID:         hostID,
+		BrokerID:         brokerID,
 		SessionID:      sessionID,
 		PingIntervalMs: pingIntervalMs,
 	}

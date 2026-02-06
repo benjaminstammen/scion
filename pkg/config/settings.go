@@ -84,12 +84,12 @@ type HubClientConfig struct {
 	GroveID string `json:"groveId,omitempty" yaml:"groveId,omitempty" koanf:"groveId"`
 	// HostID is the unique identifier for this host when registered with the Hub.
 	// This is a durable UUID that persists across server restarts.
-	HostID string `json:"hostId,omitempty" yaml:"hostId,omitempty" koanf:"hostId"`
+	BrokerID string `json:"hostId,omitempty" yaml:"hostId,omitempty" koanf:"hostId"`
 	// HostNickname is a human-readable name for this host.
 	// If not set, defaults to the system hostname.
-	HostNickname string `json:"hostNickname,omitempty" yaml:"hostNickname,omitempty" koanf:"hostNickname"`
+	BrokerNickname string `json:"hostNickname,omitempty" yaml:"hostNickname,omitempty" koanf:"hostNickname"`
 	// HostToken is the token received when registering this host with the Hub
-	HostToken string `json:"hostToken,omitempty" yaml:"hostToken,omitempty" koanf:"hostToken"`
+	BrokerToken string `json:"brokerToken,omitempty" yaml:"brokerToken,omitempty" koanf:"brokerToken"`
 }
 
 type CLIConfig struct {
@@ -536,17 +536,17 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 		if current.Hub == nil {
 			current.Hub = &HubClientConfig{}
 		}
-		current.Hub.HostID = value
-	case "hub.hostToken":
+		current.Hub.BrokerID = value
+	case "hub.brokerToken":
 		if current.Hub == nil {
 			current.Hub = &HubClientConfig{}
 		}
-		current.Hub.HostToken = value
+		current.Hub.BrokerToken = value
 	case "hub.hostNickname":
 		if current.Hub == nil {
 			current.Hub = &HubClientConfig{}
 		}
-		current.Hub.HostNickname = value
+		current.Hub.BrokerNickname = value
 	case "hub.enabled":
 		if current.Hub == nil {
 			current.Hub = &HubClientConfig{}
@@ -634,17 +634,17 @@ func GetSettingValue(s *Settings, key string) (string, error) {
 		return "", nil
 	case "hub.hostId":
 		if s.Hub != nil {
-			return s.Hub.HostID, nil
+			return s.Hub.BrokerID, nil
 		}
 		return "", nil
-	case "hub.hostToken":
+	case "hub.brokerToken":
 		if s.Hub != nil {
-			return s.Hub.HostToken, nil
+			return s.Hub.BrokerToken, nil
 		}
 		return "", nil
 	case "hub.hostNickname":
 		if s.Hub != nil {
-			return s.Hub.HostNickname, nil
+			return s.Hub.BrokerNickname, nil
 		}
 		return "", nil
 	case "hub.enabled":
@@ -709,10 +709,10 @@ func GetSettingsMap(s *Settings) map[string]string {
 			m["hub.apiKey"] = "********" // Mask API key
 		}
 		m["hub.groveId"] = s.Hub.GroveID
-		m["hub.hostId"] = s.Hub.HostID
-		m["hub.hostNickname"] = s.Hub.HostNickname
-		if s.Hub.HostToken != "" {
-			m["hub.hostToken"] = "********" // Mask host token
+		m["hub.hostId"] = s.Hub.BrokerID
+		m["hub.hostNickname"] = s.Hub.BrokerNickname
+		if s.Hub.BrokerToken != "" {
+			m["hub.brokerToken"] = "********" // Mask host token
 		}
 	}
 	if s.CLI != nil {

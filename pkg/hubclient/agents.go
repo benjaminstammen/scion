@@ -68,7 +68,7 @@ func (s *agentService) agentsPath() string {
 type ListAgentsOptions struct {
 	GroveID       string            // Filter by grove
 	Status        string            // Filter by status
-	RuntimeHostID string            // Filter by runtime host
+	RuntimeBrokerID string            // Filter by runtime host
 	Labels        map[string]string // Label selector
 	Page          apiclient.PageOptions
 }
@@ -84,7 +84,7 @@ type CreateAgentRequest struct {
 	Name          string            `json:"name"`
 	GroveID       string            `json:"groveId"`
 	Template      string            `json:"template,omitempty"`
-	RuntimeHostID string            `json:"runtimeHostId,omitempty"`
+	RuntimeBrokerID string            `json:"runtimeBrokerId,omitempty"`
 	Task          string            `json:"task,omitempty"`
 	Branch        string            `json:"branch,omitempty"`
 	Workspace     string            `json:"workspace,omitempty"`
@@ -137,8 +137,8 @@ func (s *agentService) List(ctx context.Context, opts *ListAgentsOptions) (*List
 		if opts.Status != "" {
 			query.Set("status", opts.Status)
 		}
-		if opts.RuntimeHostID != "" {
-			query.Set("runtimeHostId", opts.RuntimeHostID)
+		if opts.RuntimeBrokerID != "" {
+			query.Set("runtimeBrokerId", opts.RuntimeBrokerID)
 		}
 		for k, v := range opts.Labels {
 			query.Add("label", fmt.Sprintf("%s=%s", k, v))

@@ -11,8 +11,8 @@ import (
 	"github.com/ptone/scion-agent/pkg/apiclient"
 )
 
-func TestHostAuthMiddleware_Disabled(t *testing.T) {
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+func TestBrokerAuthMiddleware_Disabled(t *testing.T) {
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled: false,
 	})
 
@@ -30,9 +30,9 @@ func TestHostAuthMiddleware_Disabled(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_AllowUnauthenticated(t *testing.T) {
+func TestBrokerAuthMiddleware_AllowUnauthenticated(t *testing.T) {
 	secret := []byte("test-secret-key")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -54,9 +54,9 @@ func TestHostAuthMiddleware_AllowUnauthenticated(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_RequireAuth(t *testing.T) {
+func TestBrokerAuthMiddleware_RequireAuth(t *testing.T) {
 	secret := []byte("test-secret-key")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -78,9 +78,9 @@ func TestHostAuthMiddleware_RequireAuth(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_ValidSignature(t *testing.T) {
+func TestBrokerAuthMiddleware_ValidSignature(t *testing.T) {
 	secret := []byte("test-secret-key-32bytes!12345678")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -103,9 +103,9 @@ func TestHostAuthMiddleware_ValidSignature(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_InvalidSignature(t *testing.T) {
+func TestBrokerAuthMiddleware_InvalidSignature(t *testing.T) {
 	secret := []byte("test-secret-key-32bytes!12345678")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -119,7 +119,7 @@ func TestHostAuthMiddleware_InvalidSignature(t *testing.T) {
 	// Create a request with wrong signature
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	req.Header.Set(apiclient.HeaderHostID, "test-host")
+	req.Header.Set(apiclient.HeaderBrokerID, "test-host")
 	req.Header.Set(apiclient.HeaderTimestamp, timestamp)
 	req.Header.Set(apiclient.HeaderNonce, "test-nonce")
 	req.Header.Set(apiclient.HeaderSignature, base64.StdEncoding.EncodeToString([]byte("invalid-signature")))
@@ -132,9 +132,9 @@ func TestHostAuthMiddleware_InvalidSignature(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_ExpiredTimestamp(t *testing.T) {
+func TestBrokerAuthMiddleware_ExpiredTimestamp(t *testing.T) {
 	secret := []byte("test-secret-key-32bytes!12345678")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -150,7 +150,7 @@ func TestHostAuthMiddleware_ExpiredTimestamp(t *testing.T) {
 	oldTimestamp := strconv.FormatInt(time.Now().Add(-10*time.Minute).Unix(), 10)
 	nonce := "test-nonce"
 
-	req.Header.Set(apiclient.HeaderHostID, "test-host")
+	req.Header.Set(apiclient.HeaderBrokerID, "test-host")
 	req.Header.Set(apiclient.HeaderTimestamp, oldTimestamp)
 	req.Header.Set(apiclient.HeaderNonce, nonce)
 
@@ -167,9 +167,9 @@ func TestHostAuthMiddleware_ExpiredTimestamp(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_FutureTimestamp(t *testing.T) {
+func TestBrokerAuthMiddleware_FutureTimestamp(t *testing.T) {
 	secret := []byte("test-secret-key-32bytes!12345678")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -185,7 +185,7 @@ func TestHostAuthMiddleware_FutureTimestamp(t *testing.T) {
 	futureTimestamp := strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10)
 	nonce := "test-nonce"
 
-	req.Header.Set(apiclient.HeaderHostID, "test-host")
+	req.Header.Set(apiclient.HeaderBrokerID, "test-host")
 	req.Header.Set(apiclient.HeaderTimestamp, futureTimestamp)
 	req.Header.Set(apiclient.HeaderNonce, nonce)
 
@@ -202,9 +202,9 @@ func TestHostAuthMiddleware_FutureTimestamp(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_MissingHeaders(t *testing.T) {
+func TestBrokerAuthMiddleware_MissingHeaders(t *testing.T) {
 	secret := []byte("test-secret-key")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -222,7 +222,7 @@ func TestHostAuthMiddleware_MissingHeaders(t *testing.T) {
 		{
 			name: "missing timestamp",
 			headers: map[string]string{
-				apiclient.HeaderHostID:    "host-id",
+				apiclient.HeaderBrokerID:    "host-id",
 				apiclient.HeaderNonce:     "nonce",
 				apiclient.HeaderSignature: "sig",
 			},
@@ -230,7 +230,7 @@ func TestHostAuthMiddleware_MissingHeaders(t *testing.T) {
 		{
 			name: "missing signature",
 			headers: map[string]string{
-				apiclient.HeaderHostID:    "host-id",
+				apiclient.HeaderBrokerID:    "host-id",
 				apiclient.HeaderTimestamp: "123",
 				apiclient.HeaderNonce:     "nonce",
 			},
@@ -262,9 +262,9 @@ func TestHostAuthMiddleware_MissingHeaders(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_InvalidTimestampFormat(t *testing.T) {
+func TestBrokerAuthMiddleware_InvalidTimestampFormat(t *testing.T) {
 	secret := []byte("test-secret-key")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -276,7 +276,7 @@ func TestHostAuthMiddleware_InvalidTimestampFormat(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
-	req.Header.Set(apiclient.HeaderHostID, "host-id")
+	req.Header.Set(apiclient.HeaderBrokerID, "host-id")
 	req.Header.Set(apiclient.HeaderTimestamp, "not-a-number")
 	req.Header.Set(apiclient.HeaderNonce, "nonce")
 	req.Header.Set(apiclient.HeaderSignature, "sig")
@@ -289,9 +289,9 @@ func TestHostAuthMiddleware_InvalidTimestampFormat(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_InvalidSignatureEncoding(t *testing.T) {
+func TestBrokerAuthMiddleware_InvalidSignatureEncoding(t *testing.T) {
 	secret := []byte("test-secret-key")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -303,7 +303,7 @@ func TestHostAuthMiddleware_InvalidSignatureEncoding(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
-	req.Header.Set(apiclient.HeaderHostID, "host-id")
+	req.Header.Set(apiclient.HeaderBrokerID, "host-id")
 	req.Header.Set(apiclient.HeaderTimestamp, strconv.FormatInt(time.Now().Unix(), 10))
 	req.Header.Set(apiclient.HeaderNonce, "nonce")
 	req.Header.Set(apiclient.HeaderSignature, "not-valid-base64!!!")
@@ -316,11 +316,11 @@ func TestHostAuthMiddleware_InvalidSignatureEncoding(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_UpdateSecretKey(t *testing.T) {
+func TestBrokerAuthMiddleware_UpdateSecretKey(t *testing.T) {
 	oldSecret := []byte("old-secret-key")
 	newSecret := []byte("new-secret-key-32bytes!12345678")
 
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              true,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            oldSecret,
@@ -355,9 +355,9 @@ func TestHostAuthMiddleware_UpdateSecretKey(t *testing.T) {
 	}
 }
 
-func TestHostAuthMiddleware_SetEnabled(t *testing.T) {
+func TestBrokerAuthMiddleware_SetEnabled(t *testing.T) {
 	secret := []byte("test-secret-key")
-	middleware := NewHostAuthMiddleware(HostAuthConfig{
+	middleware := NewBrokerAuthMiddleware(BrokerAuthConfig{
 		Enabled:              false,
 		MaxClockSkew:         5 * time.Minute,
 		SecretKey:            secret,
@@ -388,8 +388,8 @@ func TestHostAuthMiddleware_SetEnabled(t *testing.T) {
 	}
 }
 
-func TestDefaultHostAuthConfig(t *testing.T) {
-	cfg := DefaultHostAuthConfig()
+func TestDefaultBrokerAuthConfig(t *testing.T) {
+	cfg := DefaultBrokerAuthConfig()
 
 	if cfg.Enabled {
 		t.Error("Expected Enabled to be false by default")
@@ -403,11 +403,11 @@ func TestDefaultHostAuthConfig(t *testing.T) {
 }
 
 // signRequest signs an HTTP request with HMAC authentication.
-func signRequest(req *http.Request, hostID string, secret []byte) {
+func signRequest(req *http.Request, brokerID string, secret []byte) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	nonce := "test-nonce-" + timestamp
 
-	req.Header.Set(apiclient.HeaderHostID, hostID)
+	req.Header.Set(apiclient.HeaderBrokerID, brokerID)
 	req.Header.Set(apiclient.HeaderTimestamp, timestamp)
 	req.Header.Set(apiclient.HeaderNonce, nonce)
 

@@ -38,7 +38,7 @@ type GroveService interface {
 	AddContributor(ctx context.Context, groveID string, req *AddContributorRequest) (*AddContributorResponse, error)
 
 	// RemoveContributor removes a host from a grove.
-	RemoveContributor(ctx context.Context, groveID, hostID string) error
+	RemoveContributor(ctx context.Context, groveID, brokerID string) error
 
 	// GetAgent returns an agent by ID or slug within a grove.
 	GetAgent(ctx context.Context, groveID, agentID string) (*Agent, error)
@@ -62,7 +62,7 @@ type groveService struct {
 type ListGrovesOptions struct {
 	Visibility string // Filter by visibility
 	GitRemote  string // Filter by git remote (exact or prefix)
-	HostID     string // Filter by contributing host
+	BrokerID string // Filter by contributing host
 	Name       string // Filter by exact name (case-insensitive)
 	Labels     map[string]string
 	Page       apiclient.PageOptions
@@ -80,7 +80,7 @@ type RegisterGroveRequest struct {
 	Name      string            `json:"name"`
 	GitRemote string            `json:"gitRemote"`
 	Path      string            `json:"path,omitempty"`
-	HostID    string            `json:"hostId,omitempty"`  // Link to existing host (two-phase flow)
+	BrokerID string            `json:"hostId,omitempty"`  // Link to existing host (two-phase flow)
 	Host      *HostInfo         `json:"host,omitempty"`    // DEPRECATED: Use HostID with two-phase registration
 	Profiles  []string          `json:"profiles,omitempty"`
 	Mode      string            `json:"mode,omitempty"`    // connected, read-only
@@ -92,16 +92,16 @@ type HostInfo struct {
 	ID           string            `json:"id,omitempty"`
 	Name         string            `json:"name"`
 	Version      string            `json:"version"`
-	Capabilities *HostCapabilities `json:"capabilities,omitempty"`
-	Profiles     []HostProfile     `json:"profiles,omitempty"`
+	Capabilities *BrokerCapabilities `json:"capabilities,omitempty"`
+	Profiles     []BrokerProfile     `json:"profiles,omitempty"`
 }
 
 // RegisterGroveResponse is the response from registering a grove.
 type RegisterGroveResponse struct {
 	Grove     *Grove       `json:"grove"`
-	Host      *RuntimeHost `json:"host,omitempty"` // Populated if hostId or host provided
+	Host      *RuntimeBroker `json:"host,omitempty"` // Populated if hostId or host provided
 	Created   bool         `json:"created"`        // True if grove was newly created
-	HostToken string       `json:"hostToken,omitempty"` // DEPRECATED: use two-phase registration
+	BrokerToken string       `json:"brokerToken,omitempty"` // DEPRECATED: use two-phase registration
 	SecretKey string       `json:"secretKey,omitempty"` // DEPRECATED: secrets only from /hosts/join
 }
 
@@ -128,7 +128,7 @@ type ListContributorsResponse struct {
 
 // AddContributorRequest is the request for adding a host as a grove contributor.
 type AddContributorRequest struct {
-	HostID    string `json:"hostId"`
+	BrokerID string `json:"hostId"`
 	LocalPath string `json:"localPath,omitempty"`
 	Mode      string `json:"mode,omitempty"` // "connected" or "read-only"
 }
@@ -148,8 +148,8 @@ func (s *groveService) List(ctx context.Context, opts *ListGrovesOptions) (*List
 		if opts.GitRemote != "" {
 			query.Set("gitRemote", opts.GitRemote)
 		}
-		if opts.HostID != "" {
-			query.Set("hostId", opts.HostID)
+		if opts.BrokerID != "" {
+			query.Set("hostId", opts.BrokerID)
 		}
 		if opts.Name != "" {
 			query.Set("name", opts.Name)
@@ -241,8 +241,8 @@ func (s *groveService) ListAgents(ctx context.Context, groveID string, opts *Lis
 		if opts.Status != "" {
 			query.Set("status", opts.Status)
 		}
-		if opts.RuntimeHostID != "" {
-			query.Set("runtimeHostId", opts.RuntimeHostID)
+		if opts.RuntimeBrokerID != "" {
+			query.Set("runtimeBrokerId", opts.RuntimeBrokerID)
 		}
 		for k, v := range opts.Labels {
 			query.Add("label", fmt.Sprintf("%s=%s", k, v))
@@ -294,8 +294,8 @@ func (s *groveService) AddContributor(ctx context.Context, groveID string, req *
 }
 
 // RemoveContributor removes a host from a grove.
-func (s *groveService) RemoveContributor(ctx context.Context, groveID, hostID string) error {
-	resp, err := s.c.transport.Delete(ctx, "/api/v1/groves/"+groveID+"/contributors/"+hostID, nil)
+func (s *groveService) RemoveContributor(ctx context.Context, groveID, brokerID string) error {
+	resp, err := s.c.transport.Delete(ctx, "/api/v1/groves/"+groveID+"/contributors/"+brokerID, nil)
 	if err != nil {
 		return err
 	}

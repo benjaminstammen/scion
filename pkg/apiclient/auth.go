@@ -44,21 +44,21 @@ func (a *APIKeyAuth) ApplyAuth(req *http.Request) error {
 // Refresh indicates that refresh is not supported for API keys.
 func (a *APIKeyAuth) Refresh() (bool, error) { return false, nil }
 
-// HostTokenAuth implements Runtime Host token authentication.
-type HostTokenAuth struct {
+// BrokerTokenAuth implements Runtime Host token authentication.
+type BrokerTokenAuth struct {
 	Token string
 }
 
-// ApplyAuth adds the host token to the X-Scion-Host-Token header.
-func (a *HostTokenAuth) ApplyAuth(req *http.Request) error {
+// ApplyAuth adds the host token to the X-Scion-Broker-Token header.
+func (a *BrokerTokenAuth) ApplyAuth(req *http.Request) error {
 	if a.Token != "" {
-		req.Header.Set("X-Scion-Host-Token", a.Token)
+		req.Header.Set("X-Scion-Broker-Token", a.Token)
 	}
 	return nil
 }
 
 // Refresh indicates that refresh is not supported for host tokens.
-func (a *HostTokenAuth) Refresh() (bool, error) { return false, nil }
+func (a *BrokerTokenAuth) Refresh() (bool, error) { return false, nil }
 
 // AgentTokenAuth implements Agent token authentication.
 type AgentTokenAuth struct {

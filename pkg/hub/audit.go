@@ -29,8 +29,8 @@ const (
 // HostAuthEvent represents an auditable event related to host authentication.
 type HostAuthEvent struct {
 	EventType  HostAuthEventType `json:"eventType"`
-	HostID     string            `json:"hostId"`
-	HostName   string            `json:"hostName,omitempty"`
+	BrokerID string            `json:"hostId"`
+	BrokerName string            `json:"brokerName,omitempty"`
 	IPAddress  string            `json:"ipAddress,omitempty"`
 	UserAgent  string            `json:"userAgent,omitempty"`
 	Success    bool              `json:"success"`
@@ -74,7 +74,7 @@ func (l *LogAuditLogger) LogHostAuthEvent(ctx context.Context, event *HostAuthEv
 	attrs := []slog.Attr{
 		slog.String("event_type", string(event.EventType)),
 		slog.Bool("success", event.Success),
-		slog.String("host_id", event.HostID),
+		slog.String("host_id", event.BrokerID),
 		slog.String("ip_address", event.IPAddress),
 	}
 
@@ -98,9 +98,9 @@ func (l *LogAuditLogger) LogHostAuthEvent(ctx context.Context, event *HostAuthEv
 	return nil
 }
 
-// AuditableHostAuthMiddleware creates middleware that logs authentication events.
-// This wraps HostAuthMiddleware with audit logging.
-func AuditableHostAuthMiddleware(svc *HostAuthService, logger AuditLogger) func(http.Handler) http.Handler {
+// AuditableBrokerAuthMiddleware creates middleware that logs authentication events.
+// This wraps BrokerAuthMiddleware with audit logging.
+func AuditableBrokerAuthMiddleware(svc *BrokerAuthService, logger AuditLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip if host auth service is not configured
@@ -110,15 +110,15 @@ func AuditableHostAuthMiddleware(svc *HostAuthService, logger AuditLogger) func(
 			}
 
 			// Skip if not a host-authenticated request
-			hostID := r.Header.Get(HeaderHostID)
-			if hostID == "" {
+			brokerID := r.Header.Get(HeaderBrokerID)
+			if brokerID == "" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			// Create base event
 			event := &HostAuthEvent{
-				HostID:    hostID,
+				BrokerID:    brokerID,
 				IPAddress: getClientIP(r),
 				UserAgent: r.UserAgent(),
 				Timestamp: time.Now(),
@@ -148,7 +148,7 @@ func AuditableHostAuthMiddleware(svc *HostAuthService, logger AuditLogger) func(
 			}
 
 			// Set both host-specific and generic identity contexts
-			ctx := contextWithHostIdentity(r.Context(), identity)
+			ctx := contextWithBrokerIdentity(r.Context(), identity)
 			ctx = contextWithIdentity(ctx, identity)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -178,15 +178,15 @@ func getClientIP(r *http.Request) string {
 }
 
 // LogRegistrationEvent logs a host registration event.
-func LogRegistrationEvent(ctx context.Context, logger AuditLogger, hostID, hostName, actorID, ipAddress string) {
+func LogRegistrationEvent(ctx context.Context, logger AuditLogger, brokerID, brokerName, actorID, ipAddress string) {
 	if logger == nil {
 		return
 	}
 
 	event := &HostAuthEvent{
 		EventType: HostAuthEventRegister,
-		HostID:    hostID,
-		HostName:  hostName,
+		BrokerID:    brokerID,
+		BrokerName:  brokerName,
 		IPAddress: ipAddress,
 		Success:   true,
 		ActorID:   actorID,
@@ -198,14 +198,14 @@ func LogRegistrationEvent(ctx context.Context, logger AuditLogger, hostID, hostN
 }
 
 // LogJoinEvent logs a host join event.
-func LogJoinEvent(ctx context.Context, logger AuditLogger, hostID, ipAddress string, success bool, failReason string) {
+func LogJoinEvent(ctx context.Context, logger AuditLogger, brokerID, ipAddress string, success bool, failReason string) {
 	if logger == nil {
 		return
 	}
 
 	event := &HostAuthEvent{
 		EventType:  HostAuthEventJoin,
-		HostID:     hostID,
+		BrokerID:     brokerID,
 		IPAddress:  ipAddress,
 		Success:    success,
 		FailReason: failReason,
@@ -216,14 +216,14 @@ func LogJoinEvent(ctx context.Context, logger AuditLogger, hostID, ipAddress str
 }
 
 // LogRotateEvent logs a secret rotation event.
-func LogRotateEvent(ctx context.Context, logger AuditLogger, hostID, actorID, actorType, ipAddress string) {
+func LogRotateEvent(ctx context.Context, logger AuditLogger, brokerID, actorID, actorType, ipAddress string) {
 	if logger == nil {
 		return
 	}
 
 	event := &HostAuthEvent{
 		EventType: HostAuthEventRotate,
-		HostID:    hostID,
+		BrokerID:    brokerID,
 		IPAddress: ipAddress,
 		Success:   true,
 		ActorID:   actorID,

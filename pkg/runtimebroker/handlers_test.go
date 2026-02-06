@@ -53,8 +53,8 @@ func (m *mockManager) Watch(ctx context.Context, agentID string) (<-chan api.Sta
 
 func newTestServer() *Server {
 	cfg := DefaultServerConfig()
-	cfg.HostID = "test-host-id"
-	cfg.HostName = "test-host"
+	cfg.BrokerID = "test-host-id"
+	cfg.BrokerName = "test-host"
 
 	mgr := &mockManager{
 		agents: []api.AgentInfo{
@@ -130,13 +130,13 @@ func TestHostInfo(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	var resp HostInfoResponse
+	var resp BrokerInfoResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if resp.HostID != "test-host-id" {
-		t.Errorf("expected hostId 'test-host-id', got '%s'", resp.HostID)
+	if resp.BrokerID != "test-host-id" {
+		t.Errorf("expected hostId 'test-host-id', got '%s'", resp.BrokerID)
 	}
 
 	if resp.Mode != "connected" {
@@ -293,8 +293,8 @@ func (m *envCapturingManager) Start(ctx context.Context, opts api.StartOptions) 
 
 func newTestServerWithEnvCapture() (*Server, *envCapturingManager) {
 	cfg := DefaultServerConfig()
-	cfg.HostID = "test-host-id"
-	cfg.HostName = "test-host"
+	cfg.BrokerID = "test-host-id"
+	cfg.BrokerName = "test-host"
 	cfg.Debug = true
 
 	mgr := &envCapturingManager{}
@@ -306,7 +306,7 @@ func newTestServerWithEnvCapture() (*Server, *envCapturingManager) {
 }
 
 // TestCreateAgentWithHubCredentials tests that Hub authentication env vars are passed to agent.
-// This verifies the fix from progress-report.md: RuntimeHost sets SCION_HUB_URL, SCION_HUB_TOKEN, SCION_AGENT_ID.
+// This verifies the fix from progress-report.md: RuntimeBroker sets SCION_HUB_URL, SCION_HUB_TOKEN, SCION_AGENT_ID.
 func TestCreateAgentWithHubCredentials(t *testing.T) {
 	srv, mgr := newTestServerWithEnvCapture()
 

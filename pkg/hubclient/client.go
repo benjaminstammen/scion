@@ -23,7 +23,7 @@ type Client interface {
 	Groves() GroveService
 
 	// RuntimeHosts returns the runtime host operations interface.
-	RuntimeHosts() RuntimeHostService
+	RuntimeBrokers() RuntimeBrokerService
 
 	// Templates returns the template operations interface.
 	Templates() TemplateService
@@ -53,7 +53,7 @@ type client struct {
 
 	agents        *agentService
 	groves        *groveService
-	runtimeHosts  *runtimeHostService
+	runtimeHosts  *runtimeBrokerService
 	templates     *templateService
 	workspace     *workspaceService
 	users         *userService
@@ -75,7 +75,7 @@ func New(baseURL string, opts ...Option) (Client, error) {
 	// Initialize service implementations
 	c.agents = &agentService{c: c}
 	c.groves = &groveService{c: c}
-	c.runtimeHosts = &runtimeHostService{c: c}
+	c.runtimeHosts = &runtimeBrokerService{c: c}
 	c.templates = &templateService{c: c}
 	c.workspace = &workspaceService{c: c}
 	c.users = &userService{c: c}
@@ -102,7 +102,7 @@ func (c *client) Groves() GroveService {
 }
 
 // RuntimeHosts returns the runtime host operations interface.
-func (c *client) RuntimeHosts() RuntimeHostService {
+func (c *client) RuntimeBrokers() RuntimeBrokerService {
 	return c.runtimeHosts
 }
 
@@ -235,10 +235,10 @@ func WithAutoDevAuth() Option {
 // WithHMACAuth sets HMAC-based host authentication.
 // This is used by Runtime Hosts to authenticate with the Hub using
 // the shared secret established during the join process.
-func WithHMACAuth(hostID string, secretKey []byte) Option {
+func WithHMACAuth(brokerID string, secretKey []byte) Option {
 	return func(c *client) {
 		c.transport.Auth = &apiclient.HMACAuth{
-			HostID:    hostID,
+			BrokerID:    brokerID,
 			SecretKey: secretKey,
 		}
 	}

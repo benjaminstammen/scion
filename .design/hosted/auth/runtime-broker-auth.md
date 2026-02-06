@@ -65,7 +65,7 @@ All HMAC-authenticated requests include these headers:
 
 | Header | Format | Description |
 |--------|--------|-------------|
-| `X-Scion-Host-ID` | UUID or slug | Unique identifier for the Runtime Host |
+| `X-Scion-Broker-ID` | UUID or slug | Unique identifier for the Runtime Host |
 | `X-Scion-Timestamp` | RFC 3339 | Request timestamp (e.g., `2025-01-30T12:00:00Z`) |
 | `X-Scion-Nonce` | Base64 (16 bytes) | Random nonce for replay prevention |
 | `X-Scion-Signature` | Base64 (32 bytes) | HMAC-SHA256 signature |
@@ -241,7 +241,7 @@ Once registered, all requests between Runtime Host and Hub are HMAC-signed.
 
 4. **Attach Headers**
    ```
-   X-Scion-Host-ID: host-uuid-123
+   X-Scion-Broker-ID: host-uuid-123
    X-Scion-Timestamp: 2025-01-30T12:00:00Z
    X-Scion-Nonce: random-base64-nonce
    X-Scion-Signature: computed-signature-base64
@@ -263,7 +263,7 @@ Once registered, all requests between Runtime Host and Hub are HMAC-signed.
    - Store nonce with expiry
 
 4. **Secret Retrieval**
-   - Look up secret by `X-Scion-Host-ID`
+   - Look up secret by `X-Scion-Broker-ID`
    - Reject if host not found or deactivated
 
 5. **Signature Verification**
@@ -290,7 +290,7 @@ type HostAuthMiddleware struct {
 
 func (m *HostAuthMiddleware) Middleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        hostID := r.Header.Get("X-Scion-Host-ID")
+        hostID := r.Header.Get("X-Scion-Broker-ID")
         timestamp := r.Header.Get("X-Scion-Timestamp")
         nonce := r.Header.Get("X-Scion-Nonce")
         signature := r.Header.Get("X-Scion-Signature")

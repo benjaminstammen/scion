@@ -124,7 +124,7 @@ WS /api/v1/runtime-hosts/connect
 
 **HMAC Authentication Headers:**
 ```
-X-Scion-Host-ID: host-abc123
+X-Scion-Broker-ID: host-abc123
 X-Scion-Timestamp: 2025-01-24T10:00:00Z
 X-Scion-Nonce: random-nonce-xyz
 X-Scion-Signature: HMAC-SHA256(secret, "{hostId}:{timestamp}:{nonce}:GET:/api/v1/runtime-hosts/connect")
@@ -342,7 +342,7 @@ HMAC-SHA256(shared_secret, "{hostId}:{timestamp}:{nonce}:GET:{path}")
 **Headers:**
 | Header | Description |
 |--------|-------------|
-| `X-Scion-Host-ID` | Runtime Host identifier |
+| `X-Scion-Broker-ID` | Runtime Host identifier |
 | `X-Scion-Timestamp` | RFC 3339 timestamp |
 | `X-Scion-Nonce` | Random nonce for replay prevention |
 | `X-Scion-Signature` | HMAC signature |

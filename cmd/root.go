@@ -215,7 +215,7 @@ func printDevAuthWarningIfNeeded(grovePath string) {
 
 	// Check if explicit auth is configured in settings
 	if settings.Hub != nil {
-		if settings.Hub.Token != "" || settings.Hub.APIKey != "" || settings.Hub.HostToken != "" {
+		if settings.Hub.Token != "" || settings.Hub.APIKey != "" || settings.Hub.BrokerToken != "" {
 			// Explicit auth configured, not using dev auth
 			return
 		}

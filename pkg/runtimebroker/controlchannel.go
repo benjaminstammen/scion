@@ -22,7 +22,7 @@ type ControlChannelConfig struct {
 	// HubEndpoint is the base URL of the Hub API.
 	HubEndpoint string
 	// HostID is the unique identifier for this runtime host.
-	HostID string
+	BrokerID string
 	// SecretKey is the HMAC secret key for authentication.
 	SecretKey []byte
 	// Version is the runtime host version string.
@@ -185,7 +185,7 @@ func (c *ControlChannelClient) doConnect() error {
 	c.mu.Unlock()
 
 	// Send connect message
-	connectMsg := wsprotocol.NewConnectMessage(c.config.HostID, c.config.Version, c.config.Groves)
+	connectMsg := wsprotocol.NewConnectMessage(c.config.BrokerID, c.config.Version, c.config.Groves)
 	if err := conn.WriteJSON(connectMsg); err != nil {
 		c.conn.Close()
 		return fmt.Errorf("failed to send connect message: %w", err)
@@ -230,7 +230,7 @@ func (c *ControlChannelClient) buildAuthHeaders() (http.Header, error) {
 
 	if len(c.config.SecretKey) == 0 {
 		// No auth configured
-		headers.Set("X-Scion-Host-ID", c.config.HostID)
+		headers.Set("X-Scion-Broker-ID", c.config.BrokerID)
 		return headers, nil
 	}
 
@@ -248,7 +248,7 @@ func (c *ControlChannelClient) buildAuthHeaders() (http.Header, error) {
 
 	// Apply HMAC auth using the HMACAuth type
 	hmacAuth := &apiclient.HMACAuth{
-		HostID:    c.config.HostID,
+		BrokerID:    c.config.BrokerID,
 		SecretKey: c.config.SecretKey,
 	}
 	if err := hmacAuth.ApplyAuth(req); err != nil {

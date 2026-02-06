@@ -36,8 +36,8 @@ func DefaultHeartbeatConfig() HeartbeatConfig {
 
 // HeartbeatService sends periodic heartbeats to the Hub.
 type HeartbeatService struct {
-	client   hubclient.RuntimeHostService
-	hostID   string
+	client   hubclient.RuntimeBrokerService
+	brokerID   string
 	interval time.Duration
 	manager  agent.Manager
 	version  string
@@ -48,16 +48,16 @@ type HeartbeatService struct {
 }
 
 // NewHeartbeatService creates a new heartbeat service.
-// The client must be an authenticated hubclient.RuntimeHostService.
+// The client must be an authenticated hubclient.RuntimeBrokerService.
 // The manager is used to gather agent status information.
-func NewHeartbeatService(client hubclient.RuntimeHostService, hostID string, interval time.Duration, manager agent.Manager) *HeartbeatService {
+func NewHeartbeatService(client hubclient.RuntimeBrokerService, brokerID string, interval time.Duration, manager agent.Manager) *HeartbeatService {
 	if interval < MinHeartbeatInterval {
 		interval = MinHeartbeatInterval
 	}
 
 	return &HeartbeatService{
 		client:   client,
-		hostID:   hostID,
+		brokerID:   brokerID,
 		interval: interval,
 		manager:  manager,
 	}
@@ -144,14 +144,14 @@ func (s *HeartbeatService) run(ctx context.Context) {
 // sendHeartbeat sends a single heartbeat to the Hub.
 func (s *HeartbeatService) sendHeartbeat(ctx context.Context) error {
 	heartbeat := s.buildHeartbeat()
-	return s.client.Heartbeat(ctx, s.hostID, heartbeat)
+	return s.client.Heartbeat(ctx, s.brokerID, heartbeat)
 }
 
 // buildHeartbeat constructs the heartbeat payload from current state.
-func (s *HeartbeatService) buildHeartbeat() *hubclient.HostHeartbeat {
+func (s *HeartbeatService) buildHeartbeat() *hubclient.BrokerHeartbeat {
 	status := "online"
 
-	heartbeat := &hubclient.HostHeartbeat{
+	heartbeat := &hubclient.BrokerHeartbeat{
 		Status: status,
 	}
 

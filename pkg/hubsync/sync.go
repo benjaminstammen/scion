@@ -83,7 +83,7 @@ type HubContext struct {
 	Endpoint   string
 	Settings   *config.Settings
 	GroveID    string
-	HostID     string
+	BrokerID string
 	GrovePath  string
 	IsGlobal   bool
 }
@@ -142,7 +142,7 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 	// These should only exist in global settings, not grove-specific settings.
 	// Earlier versions incorrectly wrote them to grove settings.
 	if !isGlobal {
-		cleanupGroveHostCredentials(resolvedPath)
+		cleanupGroveBrokerCredentials(resolvedPath)
 	}
 
 	settings, err := config.LoadSettings(resolvedPath)
@@ -199,9 +199,9 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 	}
 
 	// Get host ID
-	hostID := ""
+	brokerID := ""
 	if settings.Hub != nil {
-		hostID = settings.Hub.HostID
+		brokerID = settings.Hub.BrokerID
 	}
 
 	hubCtx := &HubContext{
@@ -209,13 +209,13 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 		Endpoint:  endpoint,
 		Settings:  settings,
 		GroveID:   groveID,
-		HostID:    hostID,
+		BrokerID:    brokerID,
 		GrovePath: resolvedPath,
 		IsGlobal:  isGlobal,
 	}
 
-	debugf("HubContext created: endpoint=%s, groveID=%s, hostID=%s, grovePath=%s, isGlobal=%v",
-		endpoint, groveID, hostID, resolvedPath, isGlobal)
+	debugf("HubContext created: endpoint=%s, groveID=%s, brokerID=%s, grovePath=%s, isGlobal=%v",
+		endpoint, groveID, brokerID, resolvedPath, isGlobal)
 
 	// Check grove registration
 	registered, err := isGroveRegistered(ctx, hubCtx)
@@ -277,7 +277,7 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 		hubCtx.Settings = settings
 		hubCtx.GroveID = settings.GroveID
 		if settings.Hub != nil {
-			hubCtx.HostID = settings.Hub.HostID
+			hubCtx.BrokerID = settings.Hub.BrokerID
 		}
 	}
 
@@ -319,8 +319,8 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error) {
 	result := &SyncResult{}
 
-	debugf("CompareAgents starting: groveID=%s, hostID=%s, grovePath=%s",
-		hubCtx.GroveID, hubCtx.HostID, hubCtx.GrovePath)
+	debugf("CompareAgents starting: groveID=%s, brokerID=%s, grovePath=%s",
+		hubCtx.GroveID, hubCtx.BrokerID, hubCtx.GrovePath)
 
 	// Get local agents
 	localAgents, err := GetLocalAgents(hubCtx.GrovePath)
@@ -335,7 +335,7 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 
 	opts := &hubclient.ListAgentsOptions{
 		GroveID:       hubCtx.GroveID,
-		RuntimeHostID: hubCtx.HostID,
+		RuntimeBrokerID: hubCtx.BrokerID,
 	}
 
 	resp, err := hubCtx.Client.GroveAgents(hubCtx.GroveID).List(ctxTimeout, opts)
@@ -345,8 +345,8 @@ func CompareAgents(ctx context.Context, hubCtx *HubContext) (*SyncResult, error)
 
 	debugf("Hub agents found: %d total", len(resp.Agents))
 	for _, a := range resp.Agents {
-		debugf("  - Hub agent: name=%s, id=%s, status=%s, hostID=%s",
-			a.Name, a.ID, a.Status, a.RuntimeHostID)
+		debugf("  - Hub agent: name=%s, id=%s, status=%s, brokerID=%s",
+			a.Name, a.ID, a.Status, a.RuntimeBrokerID)
 	}
 
 	// Build map of Hub agents
@@ -397,7 +397,7 @@ func ExecuteSync(ctx context.Context, hubCtx *HubContext, result *SyncResult, au
 	ctxTimeout, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	debugf("ExecuteSync starting: groveID=%s, hostID=%s", hubCtx.GroveID, hubCtx.HostID)
+	debugf("ExecuteSync starting: groveID=%s, brokerID=%s", hubCtx.GroveID, hubCtx.BrokerID)
 
 	// Register local agents on Hub
 	// Note: We don't specify a runtime host ID - the hub will resolve it based on
@@ -462,7 +462,7 @@ func ExecuteSync(ctx context.Context, hubCtx *HubContext, result *SyncResult, au
 			}
 
 			selectedHost, _ := availableHosts[choice-1].(map[string]interface{})
-			req.RuntimeHostID, _ = selectedHost["id"].(string)
+			req.RuntimeBrokerID, _ = selectedHost["id"].(string)
 			// Loop and retry with selected host
 		}
 	}
@@ -572,9 +572,9 @@ func registerGrove(ctx context.Context, hubCtx *HubContext, groveName string, is
 	}
 
 	// Get hostname
-	hostName, err := os.Hostname()
+	brokerName, err := os.Hostname()
 	if err != nil {
-		hostName = "local-host"
+		brokerName = "local-host"
 	}
 
 	req := &hubclient.RegisterGroveRequest{
@@ -584,8 +584,8 @@ func registerGrove(ctx context.Context, hubCtx *HubContext, groveName string, is
 		Path:      hubCtx.GrovePath,
 		Mode:      "connected",
 		Host: &hubclient.HostInfo{
-			ID:   hubCtx.HostID,
-			Name: hostName,
+			ID:   hubCtx.BrokerID,
+			Name: brokerName,
 		},
 	}
 
@@ -600,8 +600,8 @@ func registerGrove(ctx context.Context, hubCtx *HubContext, groveName string, is
 	if globalErr != nil {
 		fmt.Printf("Warning: failed to get global directory: %v\n", globalErr)
 	} else {
-		if resp.HostToken != "" {
-			if err := config.UpdateSetting(globalDir, "hub.hostToken", resp.HostToken, true); err != nil {
+		if resp.BrokerToken != "" {
+			if err := config.UpdateSetting(globalDir, "hub.brokerToken", resp.BrokerToken, true); err != nil {
 				fmt.Printf("Warning: failed to save host token: %v\n", err)
 			}
 		}
@@ -699,10 +699,10 @@ func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// cleanupGroveHostCredentials removes stale hub.hostId and hub.hostToken from
+// cleanupGroveBrokerCredentials removes stale hub.hostId and hub.brokerToken from
 // grove settings. These should only exist in global settings, not grove-specific.
 // Earlier versions of scion incorrectly wrote them to grove settings.
-func cleanupGroveHostCredentials(grovePath string) {
+func cleanupGroveBrokerCredentials(grovePath string) {
 	settingsPath := config.GetSettingsPath(grovePath)
 	if settingsPath == "" {
 		return
@@ -713,9 +713,9 @@ func cleanupGroveHostCredentials(grovePath string) {
 		return
 	}
 
-	// Check if the file contains hostId or hostToken
+	// Check if the file contains hostId or brokerToken
 	content := string(data)
-	if !strings.Contains(content, "hostId") && !strings.Contains(content, "hostToken") {
+	if !strings.Contains(content, "hostId") && !strings.Contains(content, "brokerToken") {
 		return
 	}
 
@@ -747,10 +747,10 @@ func cleanupGroveHostCredentials(grovePath string) {
 		modified = true
 		debugf("Removed stale hub.hostId from grove settings")
 	}
-	if _, hasHostToken := hubSection["hostToken"]; hasHostToken {
-		delete(hubSection, "hostToken")
+	if _, hasHostToken := hubSection["brokerToken"]; hasHostToken {
+		delete(hubSection, "brokerToken")
 		modified = true
-		debugf("Removed stale hub.hostToken from grove settings")
+		debugf("Removed stale hub.brokerToken from grove settings")
 	}
 
 	if !modified {

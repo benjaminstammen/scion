@@ -16,7 +16,7 @@ type Client interface {
 	Agents() AgentService
 
 	// Info returns host information.
-	Info(ctx context.Context) (*runtimehost.HostInfoResponse, error)
+	Info(ctx context.Context) (*runtimehost.BrokerInfoResponse, error)
 
 	// Health checks host availability.
 	Health(ctx context.Context) (*runtimehost.HealthResponse, error)
@@ -49,12 +49,12 @@ func (c *client) Agents() AgentService {
 }
 
 // Info returns host information.
-func (c *client) Info(ctx context.Context) (*runtimehost.HostInfoResponse, error) {
+func (c *client) Info(ctx context.Context) (*runtimehost.BrokerInfoResponse, error) {
 	resp, err := c.transport.Get(ctx, "/api/v1/info", nil)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.DecodeResponse[runtimehost.HostInfoResponse](resp)
+	return apiclient.DecodeResponse[runtimehost.BrokerInfoResponse](resp)
 }
 
 // Health checks host availability.
@@ -76,10 +76,10 @@ func WithBearerToken(token string) Option {
 	}
 }
 
-// WithHostToken sets Runtime Host token authentication.
-func WithHostToken(token string) Option {
+// WithBrokerToken sets Runtime Host token authentication.
+func WithBrokerToken(token string) Option {
 	return func(c *client) {
-		c.transport.Auth = &apiclient.HostTokenAuth{Token: token}
+		c.transport.Auth = &apiclient.BrokerTokenAuth{Token: token}
 	}
 }
 

@@ -15,9 +15,9 @@ import (
 // Host Secret Operations
 // ============================================================================
 
-// CreateHostSecret creates a new host secret record.
-func (s *SQLiteStore) CreateHostSecret(ctx context.Context, secret *store.HostSecret) error {
-	if secret.HostID == "" {
+// CreateBrokerSecret creates a new host secret record.
+func (s *SQLiteStore) CreateBrokerSecret(ctx context.Context, secret *store.BrokerSecret) error {
+	if secret.BrokerID == "" {
 		return store.ErrInvalidInput
 	}
 
@@ -26,10 +26,10 @@ func (s *SQLiteStore) CreateHostSecret(ctx context.Context, secret *store.HostSe
 		secret.CreatedAt = now
 	}
 	if secret.Algorithm == "" {
-		secret.Algorithm = store.HostSecretAlgorithmHMACSHA256
+		secret.Algorithm = store.BrokerSecretAlgorithmHMACSHA256
 	}
 	if secret.Status == "" {
-		secret.Status = store.HostSecretStatusActive
+		secret.Status = store.BrokerSecretStatusActive
 	}
 
 	_, err := s.db.ExecContext(ctx, `
@@ -38,7 +38,7 @@ func (s *SQLiteStore) CreateHostSecret(ctx context.Context, secret *store.HostSe
 			created_at, rotated_at, expires_at, status
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
 	`,
-		secret.HostID, secret.SecretKey, secret.Algorithm,
+		secret.BrokerID, secret.SecretKey, secret.Algorithm,
 		secret.CreatedAt, nullableTime(secret.RotatedAt), nullableTime(secret.ExpiresAt), secret.Status,
 	)
 	if err != nil {
@@ -51,17 +51,17 @@ func (s *SQLiteStore) CreateHostSecret(ctx context.Context, secret *store.HostSe
 	return nil
 }
 
-// GetHostSecret retrieves a host secret by host ID.
-func (s *SQLiteStore) GetHostSecret(ctx context.Context, hostID string) (*store.HostSecret, error) {
-	secret := &store.HostSecret{}
+// GetBrokerSecret retrieves a host secret by host ID.
+func (s *SQLiteStore) GetBrokerSecret(ctx context.Context, brokerID string) (*store.BrokerSecret, error) {
+	secret := &store.BrokerSecret{}
 	var rotatedAt, expiresAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT host_id, secret_key, algorithm,
 			created_at, rotated_at, expires_at, status
 		FROM host_secrets WHERE host_id = ?
-	`, hostID).Scan(
-		&secret.HostID, &secret.SecretKey, &secret.Algorithm,
+	`, brokerID).Scan(
+		&secret.BrokerID, &secret.SecretKey, &secret.Algorithm,
 		&secret.CreatedAt, &rotatedAt, &expiresAt, &secret.Status,
 	)
 	if err != nil {
@@ -83,26 +83,26 @@ func (s *SQLiteStore) GetHostSecret(ctx context.Context, hostID string) (*store.
 
 // GetActiveSecrets retrieves all active and deprecated secrets for a host.
 // This supports dual-secret validation during rotation grace periods.
-func (s *SQLiteStore) GetActiveSecrets(ctx context.Context, hostID string) ([]*store.HostSecret, error) {
+func (s *SQLiteStore) GetActiveSecrets(ctx context.Context, brokerID string) ([]*store.BrokerSecret, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT host_id, secret_key, algorithm,
 			created_at, rotated_at, expires_at, status
 		FROM host_secrets
 		WHERE host_id = ? AND status IN (?, ?)
 		ORDER BY created_at DESC
-	`, hostID, store.HostSecretStatusActive, store.HostSecretStatusDeprecated)
+	`, brokerID, store.BrokerSecretStatusActive, store.BrokerSecretStatusDeprecated)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var secrets []*store.HostSecret
+	var secrets []*store.BrokerSecret
 	for rows.Next() {
-		secret := &store.HostSecret{}
+		secret := &store.BrokerSecret{}
 		var rotatedAt, expiresAt sql.NullTime
 
 		if err := rows.Scan(
-			&secret.HostID, &secret.SecretKey, &secret.Algorithm,
+			&secret.BrokerID, &secret.SecretKey, &secret.Algorithm,
 			&secret.CreatedAt, &rotatedAt, &expiresAt, &secret.Status,
 		); err != nil {
 			return nil, err
@@ -125,8 +125,8 @@ func (s *SQLiteStore) GetActiveSecrets(ctx context.Context, hostID string) ([]*s
 	return secrets, nil
 }
 
-// UpdateHostSecret updates an existing host secret.
-func (s *SQLiteStore) UpdateHostSecret(ctx context.Context, secret *store.HostSecret) error {
+// UpdateBrokerSecret updates an existing host secret.
+func (s *SQLiteStore) UpdateBrokerSecret(ctx context.Context, secret *store.BrokerSecret) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE host_secrets SET
 			secret_key = ?,
@@ -138,7 +138,7 @@ func (s *SQLiteStore) UpdateHostSecret(ctx context.Context, secret *store.HostSe
 	`,
 		secret.SecretKey, secret.Algorithm,
 		nullableTime(secret.RotatedAt), nullableTime(secret.ExpiresAt), secret.Status,
-		secret.HostID,
+		secret.BrokerID,
 	)
 	if err != nil {
 		return err
@@ -154,11 +154,11 @@ func (s *SQLiteStore) UpdateHostSecret(ctx context.Context, secret *store.HostSe
 	return nil
 }
 
-// DeleteHostSecret removes a host secret.
-func (s *SQLiteStore) DeleteHostSecret(ctx context.Context, hostID string) error {
+// DeleteBrokerSecret removes a host secret.
+func (s *SQLiteStore) DeleteBrokerSecret(ctx context.Context, brokerID string) error {
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM host_secrets WHERE host_id = ?
-	`, hostID)
+	`, brokerID)
 	if err != nil {
 		return err
 	}
@@ -178,8 +178,8 @@ func (s *SQLiteStore) DeleteHostSecret(ctx context.Context, hostID string) error
 // ============================================================================
 
 // CreateJoinToken creates a new join token for host registration.
-func (s *SQLiteStore) CreateJoinToken(ctx context.Context, token *store.HostJoinToken) error {
-	if token.HostID == "" || token.TokenHash == "" {
+func (s *SQLiteStore) CreateJoinToken(ctx context.Context, token *store.BrokerJoinToken) error {
+	if token.BrokerID == "" || token.TokenHash == "" {
 		return store.ErrInvalidInput
 	}
 
@@ -193,7 +193,7 @@ func (s *SQLiteStore) CreateJoinToken(ctx context.Context, token *store.HostJoin
 			host_id, token_hash, expires_at, created_at, created_by
 		) VALUES (?, ?, ?, ?, ?)
 	`,
-		token.HostID, token.TokenHash, token.ExpiresAt, token.CreatedAt, token.CreatedBy,
+		token.BrokerID, token.TokenHash, token.ExpiresAt, token.CreatedAt, token.CreatedBy,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
@@ -208,14 +208,14 @@ func (s *SQLiteStore) CreateJoinToken(ctx context.Context, token *store.HostJoin
 }
 
 // GetJoinToken retrieves a join token by token hash.
-func (s *SQLiteStore) GetJoinToken(ctx context.Context, tokenHash string) (*store.HostJoinToken, error) {
-	token := &store.HostJoinToken{}
+func (s *SQLiteStore) GetJoinToken(ctx context.Context, tokenHash string) (*store.BrokerJoinToken, error) {
+	token := &store.BrokerJoinToken{}
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT host_id, token_hash, expires_at, created_at, created_by
 		FROM host_join_tokens WHERE token_hash = ?
 	`, tokenHash).Scan(
-		&token.HostID, &token.TokenHash, &token.ExpiresAt, &token.CreatedAt, &token.CreatedBy,
+		&token.BrokerID, &token.TokenHash, &token.ExpiresAt, &token.CreatedAt, &token.CreatedBy,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -226,15 +226,15 @@ func (s *SQLiteStore) GetJoinToken(ctx context.Context, tokenHash string) (*stor
 	return token, nil
 }
 
-// GetJoinTokenByHostID retrieves a join token by host ID.
-func (s *SQLiteStore) GetJoinTokenByHostID(ctx context.Context, hostID string) (*store.HostJoinToken, error) {
-	token := &store.HostJoinToken{}
+// GetJoinTokenByBrokerID retrieves a join token by host ID.
+func (s *SQLiteStore) GetJoinTokenByBrokerID(ctx context.Context, brokerID string) (*store.BrokerJoinToken, error) {
+	token := &store.BrokerJoinToken{}
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT host_id, token_hash, expires_at, created_at, created_by
 		FROM host_join_tokens WHERE host_id = ?
-	`, hostID).Scan(
-		&token.HostID, &token.TokenHash, &token.ExpiresAt, &token.CreatedAt, &token.CreatedBy,
+	`, brokerID).Scan(
+		&token.BrokerID, &token.TokenHash, &token.ExpiresAt, &token.CreatedAt, &token.CreatedBy,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -246,10 +246,10 @@ func (s *SQLiteStore) GetJoinTokenByHostID(ctx context.Context, hostID string) (
 }
 
 // DeleteJoinToken removes a join token by host ID.
-func (s *SQLiteStore) DeleteJoinToken(ctx context.Context, hostID string) error {
+func (s *SQLiteStore) DeleteJoinToken(ctx context.Context, brokerID string) error {
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM host_join_tokens WHERE host_id = ?
-	`, hostID)
+	`, brokerID)
 	if err != nil {
 		return err
 	}

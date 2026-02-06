@@ -60,7 +60,7 @@ func TestConnectMessage(t *testing.T) {
 	msg := NewConnectMessage("host-123", "1.0.0", []string{"grove-1", "grove-2"})
 
 	assert.Equal(t, TypeConnect, msg.Type)
-	assert.Equal(t, "host-123", msg.HostID)
+	assert.Equal(t, "host-123", msg.BrokerID)
 	assert.Equal(t, "1.0.0", msg.Version)
 	assert.Equal(t, []string{"grove-1", "grove-2"}, msg.Groves)
 	assert.Greater(t, msg.Timestamp, int64(0))
@@ -72,7 +72,7 @@ func TestConnectMessage(t *testing.T) {
 	var parsed ConnectMessage
 	err = json.Unmarshal(data, &parsed)
 	require.NoError(t, err)
-	assert.Equal(t, msg.HostID, parsed.HostID)
+	assert.Equal(t, msg.BrokerID, parsed.BrokerID)
 	assert.Equal(t, msg.Version, parsed.Version)
 }
 
@@ -80,7 +80,7 @@ func TestConnectedMessage(t *testing.T) {
 	msg := NewConnectedMessage("host-123", "session-456", 30000)
 
 	assert.Equal(t, TypeConnected, msg.Type)
-	assert.Equal(t, "host-123", msg.HostID)
+	assert.Equal(t, "host-123", msg.BrokerID)
 	assert.Equal(t, "session-456", msg.SessionID)
 	assert.Equal(t, 30000, msg.PingIntervalMs)
 }
@@ -209,7 +209,7 @@ func TestParseMessage(t *testing.T) {
 		data := []byte(`{"type":"connect","hostId":"host-1","version":"1.0.0"}`)
 		msg, err := ParseMessage[ConnectMessage](data)
 		require.NoError(t, err)
-		assert.Equal(t, "host-1", msg.HostID)
+		assert.Equal(t, "host-1", msg.BrokerID)
 		assert.Equal(t, "1.0.0", msg.Version)
 	})
 

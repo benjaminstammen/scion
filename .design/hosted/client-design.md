@@ -176,7 +176,7 @@ type HostTokenAuth struct {
 }
 
 func (a *HostTokenAuth) ApplyAuth(req *http.Request) error {
-    req.Header.Set("X-Scion-Host-Token", a.Token)
+    req.Header.Set("X-Scion-Broker-Token", a.Token)
     return nil
 }
 

@@ -256,10 +256,10 @@ func TestUnifiedAuthMiddleware_HostAuthPassthrough(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	t.Run("request with X-Scion-Host-ID passes through", func(t *testing.T) {
+	t.Run("request with X-Scion-Broker-ID passes through", func(t *testing.T) {
 		passedThrough = false
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/runtime-hosts/test-host/heartbeat", nil)
-		req.Header.Set("X-Scion-Host-ID", "test-host-id")
+		req.Header.Set("X-Scion-Broker-ID", "test-host-id")
 		req.Header.Set("X-Scion-Timestamp", "1234567890")
 		req.Header.Set("X-Scion-Nonce", "test-nonce")
 		req.Header.Set("X-Scion-Signature", "test-signature")
@@ -268,7 +268,7 @@ func TestUnifiedAuthMiddleware_HostAuthPassthrough(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		if !passedThrough {
-			t.Error("expected request with X-Scion-Host-ID to pass through to next handler")
+			t.Error("expected request with X-Scion-Broker-ID to pass through to next handler")
 		}
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status 200, got %d", rec.Code)

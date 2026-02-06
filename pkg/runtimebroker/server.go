@@ -42,9 +42,9 @@ type ServerConfig struct {
 	HubEndpoint string
 
 	// HostID is a unique identifier for this runtime host.
-	HostID string
+	BrokerID string
 	// HostName is a human-readable name for this runtime host.
-	HostName string
+	BrokerName string
 
 	// CORS settings
 	CORSEnabled        bool
@@ -72,16 +72,16 @@ type ServerConfig struct {
 	TemplateCacheMaxSize int64
 
 	// Host credentials settings
-	// HostCredentialsPath is the path to the host credentials file.
+	// BrokerCredentialsPath is the path to the host credentials file.
 	// If set, HMAC authentication will be used instead of bearer tokens.
 	// Defaults to ~/.scion/host-credentials.json if not specified.
-	HostCredentialsPath string
+	BrokerCredentialsPath string
 
 	// HostAuthEnabled enables HMAC verification for incoming requests from the Hub.
-	HostAuthEnabled bool
+	BrokerAuthEnabled bool
 	// HostAuthStrictMode, when true, requires all requests to be authenticated.
 	// When false (default), unauthenticated requests are allowed for transition periods.
-	HostAuthStrictMode bool
+	BrokerAuthStrictMode bool
 
 	// Heartbeat settings
 	// HeartbeatEnabled enables periodic heartbeats to the Hub.
@@ -111,11 +111,11 @@ func DefaultServerConfig() ServerConfig {
 		Host:         "0.0.0.0",
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
-		Mode:         config.RuntimeHostModeConnected,
+		Mode:         config.RuntimeBrokerModeConnected,
 		CORSEnabled:  true,
 		CORSAllowedOrigins: []string{"*"},
 		CORSAllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Host-Token", "X-API-Key", "X-Scion-Host-ID", "X-Scion-Timestamp", "X-Scion-Nonce", "X-Scion-Signature", "X-Scion-Signed-Headers"},
+		CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Broker-Token", "X-API-Key", "X-Scion-Broker-ID", "X-Scion-Timestamp", "X-Scion-Nonce", "X-Scion-Signature", "X-Scion-Signed-Headers"},
 		CORSMaxAge:         3600,
 	}
 }
@@ -137,12 +137,12 @@ type Server struct {
 	hydrator  *templatecache.Hydrator
 
 	// Authentication and heartbeat
-	hostAuthMiddleware *HostAuthMiddleware
+	hostAuthMiddleware *BrokerAuthMiddleware
 	heartbeat          *HeartbeatService
-	hostCredentials    *hostcredentials.HostCredentials
+	brokerCredentials    *brokercredentials.BrokerCredentials
 
 	// Credential watching
-	credentialsStore   *hostcredentials.Store
+	credentialsStore   *brokercredentials.Store
 	credentialsModTime time.Time
 	credWatcherStop    chan struct{}
 
@@ -200,9 +200,9 @@ func (s *Server) initHubIntegration() error {
 
 	// Try to load host credentials for HMAC auth
 	var secretKey []byte
-	if err := s.loadHostCredentials(); err == nil && s.hostCredentials != nil {
+	if err := s.loadBrokerCredentials(); err == nil && s.brokerCredentials != nil {
 		// Decode the secret key
-		secretKey, err = base64.StdEncoding.DecodeString(s.hostCredentials.SecretKey)
+		secretKey, err = base64.StdEncoding.DecodeString(s.brokerCredentials.SecretKey)
 		if err != nil {
 			slog.Warn("Failed to decode host secret key", "error", err)
 		}
@@ -211,14 +211,14 @@ func (s *Server) initHubIntegration() error {
 	// Initialize Hub client with appropriate auth
 	opts := []hubclient.Option{}
 
-	if len(secretKey) > 0 && s.hostCredentials != nil {
+	if len(secretKey) > 0 && s.brokerCredentials != nil {
 		// Use HMAC auth from credentials
-		opts = append(opts, hubclient.WithHMACAuth(s.hostCredentials.HostID, secretKey))
-		slog.Info("Hub client using HMAC authentication", "hostID", s.hostCredentials.HostID)
+		opts = append(opts, hubclient.WithHMACAuth(s.brokerCredentials.BrokerID, secretKey))
+		slog.Info("Hub client using HMAC authentication", "brokerID", s.brokerCredentials.BrokerID)
 
 		// Update HostID from credentials if not already set
-		if s.config.HostID == "" {
-			s.config.HostID = s.hostCredentials.HostID
+		if s.config.BrokerID == "" {
+			s.config.BrokerID = s.brokerCredentials.BrokerID
 		}
 	} else if s.config.HubToken != "" {
 		// Fall back to bearer token
@@ -240,14 +240,14 @@ func (s *Server) initHubIntegration() error {
 	s.hydrator = templatecache.NewHydrator(s.cache, s.hubClient)
 
 	// Set up host auth middleware if enabled and we have credentials
-	if s.config.HostAuthEnabled && len(secretKey) > 0 {
-		s.hostAuthMiddleware = NewHostAuthMiddleware(HostAuthConfig{
+	if s.config.BrokerAuthEnabled && len(secretKey) > 0 {
+		s.hostAuthMiddleware = NewBrokerAuthMiddleware(BrokerAuthConfig{
 			Enabled:              true,
 			MaxClockSkew:         5 * time.Minute,
 			SecretKey:            secretKey,
-			AllowUnauthenticated: !s.config.HostAuthStrictMode, // Configurable strict mode
+			AllowUnauthenticated: !s.config.BrokerAuthStrictMode, // Configurable strict mode
 		})
-		if s.config.HostAuthStrictMode {
+		if s.config.BrokerAuthStrictMode {
 			slog.Info("Host auth middleware enabled (strict mode)")
 		} else {
 			slog.Info("Host auth middleware enabled (permissive mode)")
@@ -263,14 +263,14 @@ func (s *Server) initHubIntegration() error {
 	return nil
 }
 
-// loadHostCredentials attempts to load host credentials from the configured path.
-func (s *Server) loadHostCredentials() error {
-	credPath := s.config.HostCredentialsPath
+// loadBrokerCredentials attempts to load host credentials from the configured path.
+func (s *Server) loadBrokerCredentials() error {
+	credPath := s.config.BrokerCredentialsPath
 	if credPath == "" {
-		credPath = hostcredentials.DefaultPath()
+		credPath = brokercredentials.DefaultPath()
 	}
 
-	s.credentialsStore = hostcredentials.NewStore(credPath)
+	s.credentialsStore = brokercredentials.NewStore(credPath)
 	if !s.credentialsStore.Exists() {
 		return nil // No credentials file, not an error
 	}
@@ -280,9 +280,9 @@ func (s *Server) loadHostCredentials() error {
 		return fmt.Errorf("failed to load host credentials: %w", err)
 	}
 
-	s.hostCredentials = creds
+	s.brokerCredentials = creds
 	s.credentialsModTime = s.credentialsStore.ModTime()
-	slog.Info("Host credentials loaded", "hostID", creds.HostID, "hub", creds.HubEndpoint)
+	slog.Info("Host credentials loaded", "brokerID", creds.BrokerID, "hub", creds.HubEndpoint)
 	return nil
 }
 
@@ -331,17 +331,17 @@ func (s *Server) Start(ctx context.Context) error {
 	)
 	if s.config.Debug {
 		slog.Debug("Host details",
-			"hostID", s.config.HostID,
-			"hostName", s.config.HostName,
+			"brokerID", s.config.BrokerID,
+			"brokerName", s.config.BrokerName,
 			"hub_endpoint", s.config.HubEndpoint,
 		)
 	}
 
 	// Check if we have valid host credentials for Hub communication
-	hasValidCredentials := s.hostCredentials != nil && s.hostCredentials.SecretKey != ""
+	hasValidCredentials := s.brokerCredentials != nil && s.brokerCredentials.SecretKey != ""
 
 	// Start heartbeat service if enabled and we have valid credentials
-	if s.config.HeartbeatEnabled && s.hubClient != nil && s.config.HostID != "" {
+	if s.config.HeartbeatEnabled && s.hubClient != nil && s.config.BrokerID != "" {
 		if !hasValidCredentials {
 			slog.Warn("Skipping heartbeat: no valid host credentials (run 'scion hub register' first)")
 		} else {
@@ -351,8 +351,8 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 
 			s.heartbeat = NewHeartbeatService(
-				s.hubClient.RuntimeHosts(),
-				s.config.HostID,
+				s.hubClient.RuntimeBrokers(),
+				s.config.BrokerID,
 				interval,
 				s.manager,
 			)
@@ -363,17 +363,17 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	// Start control channel if enabled and we have valid credentials
-	if s.config.ControlChannelEnabled && s.config.HubEndpoint != "" && s.config.HostID != "" {
+	if s.config.ControlChannelEnabled && s.config.HubEndpoint != "" && s.config.BrokerID != "" {
 		if !hasValidCredentials {
 			slog.Warn("Skipping control channel: no valid host credentials (run 'scion hub register' first)")
 		} else {
-			secretKey, err := base64.StdEncoding.DecodeString(s.hostCredentials.SecretKey)
+			secretKey, err := base64.StdEncoding.DecodeString(s.brokerCredentials.SecretKey)
 			if err != nil {
 				slog.Error("Failed to decode secret key", "error", err)
 			} else {
 				ccConfig := ControlChannelConfig{
 					HubEndpoint:         s.config.HubEndpoint,
-					HostID:              s.config.HostID,
+					BrokerID:              s.config.BrokerID,
 					SecretKey:           secretKey,
 					Version:             s.version,
 					ReconnectInitial:    1 * time.Second,
@@ -509,16 +509,16 @@ func (s *Server) checkAndReloadCredentials(ctx context.Context) error {
 		return nil // No change
 	}
 
-	slog.Info("Credentials changed, reloading", "hostID", creds.HostID)
+	slog.Info("Credentials changed, reloading", "brokerID", creds.BrokerID)
 
 	s.mu.Lock()
-	oldCredentials := s.hostCredentials
-	s.hostCredentials = creds
+	oldCredentials := s.brokerCredentials
+	s.brokerCredentials = creds
 	s.credentialsModTime = modTime
 	s.mu.Unlock()
 
 	// Check if host ID or secret key changed (requiring service restart)
-	hostIDChanged := oldCredentials == nil || oldCredentials.HostID != creds.HostID
+	hostIDChanged := oldCredentials == nil || oldCredentials.BrokerID != creds.BrokerID
 	secretKeyChanged := oldCredentials == nil || oldCredentials.SecretKey != creds.SecretKey
 
 	if hostIDChanged || secretKeyChanged {
@@ -533,7 +533,7 @@ func (s *Server) checkAndReloadCredentials(ctx context.Context) error {
 }
 
 // reinitializeHubServices stops and restarts the Hub client, heartbeat, and control channel.
-func (s *Server) reinitializeHubServices(ctx context.Context, creds *hostcredentials.HostCredentials) error {
+func (s *Server) reinitializeHubServices(ctx context.Context, creds *brokercredentials.BrokerCredentials) error {
 	// Decode the secret key
 	secretKey, err := base64.StdEncoding.DecodeString(creds.SecretKey)
 	if err != nil {
@@ -556,7 +556,7 @@ func (s *Server) reinitializeHubServices(ctx context.Context, creds *hostcredent
 
 	// Create new Hub client with updated credentials
 	opts := []hubclient.Option{
-		hubclient.WithHMACAuth(creds.HostID, secretKey),
+		hubclient.WithHMACAuth(creds.BrokerID, secretKey),
 	}
 	client, err := hubclient.New(s.config.HubEndpoint, opts...)
 	if err != nil {
@@ -565,15 +565,15 @@ func (s *Server) reinitializeHubServices(ctx context.Context, creds *hostcredent
 
 	s.mu.Lock()
 	s.hubClient = client
-	s.config.HostID = creds.HostID // Update HostID in config
+	s.config.BrokerID = creds.BrokerID // Update HostID in config
 	if s.cache != nil {
 		s.hydrator = templatecache.NewHydrator(s.cache, client)
 	}
-	slog.Info("Hub client reinitialized with HMAC auth", "hostID", creds.HostID)
+	slog.Info("Hub client reinitialized with HMAC auth", "brokerID", creds.BrokerID)
 	s.mu.Unlock()
 
 	// Restart heartbeat if enabled
-	if s.config.HeartbeatEnabled && s.config.HostID != "" {
+	if s.config.HeartbeatEnabled && s.config.BrokerID != "" {
 		interval := s.config.HeartbeatInterval
 		if interval <= 0 {
 			interval = DefaultHeartbeatInterval
@@ -581,8 +581,8 @@ func (s *Server) reinitializeHubServices(ctx context.Context, creds *hostcredent
 
 		s.mu.Lock()
 		s.heartbeat = NewHeartbeatService(
-			client.RuntimeHosts(),
-			creds.HostID,
+			client.RuntimeBrokers(),
+			creds.BrokerID,
 			interval,
 			s.manager,
 		)
@@ -596,7 +596,7 @@ func (s *Server) reinitializeHubServices(ctx context.Context, creds *hostcredent
 	if s.config.ControlChannelEnabled && s.config.HubEndpoint != "" {
 		ccConfig := ControlChannelConfig{
 			HubEndpoint:         s.config.HubEndpoint,
-			HostID:              creds.HostID,
+			BrokerID:              creds.BrokerID,
 			SecretKey:           secretKey,
 			Version:             s.version,
 			ReconnectInitial:    1 * time.Second,

@@ -1,4 +1,4 @@
-// Package hostcredentials manages Runtime Host credentials for Hub authentication.
+// Package brokercredentials manages Runtime Broker credentials for Hub authentication.
 // This package is separate from pkg/credentials which handles CLI user credentials.
 package brokercredentials
 
@@ -29,10 +29,10 @@ var (
 	ErrInvalidCredentials = errors.New("invalid host credentials")
 )
 
-// HostCredentials contains the credentials for a Runtime Host.
-type HostCredentials struct {
+// BrokerCredentials contains the credentials for a Runtime Host.
+type BrokerCredentials struct {
 	// HostID is the unique identifier for this host.
-	HostID string `json:"hostId"`
+	BrokerID string `json:"hostId"`
 	// SecretKey is the base64-encoded shared secret for HMAC authentication.
 	SecretKey string `json:"secretKey"`
 	// HubEndpoint is the URL of the Hub API.
@@ -82,7 +82,7 @@ func (s *Store) Exists() bool {
 }
 
 // Load reads and parses the credentials file.
-func (s *Store) Load() (*HostCredentials, error) {
+func (s *Store) Load() (*BrokerCredentials, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -94,13 +94,13 @@ func (s *Store) Load() (*HostCredentials, error) {
 		return nil, fmt.Errorf("failed to read credentials file: %w", err)
 	}
 
-	var creds HostCredentials
+	var creds BrokerCredentials
 	if err := json.Unmarshal(data, &creds); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
 	}
 
 	// Validate required fields
-	if creds.HostID == "" {
+	if creds.BrokerID == "" {
 		return nil, fmt.Errorf("%w: missing hostId", ErrInvalidCredentials)
 	}
 	if creds.SecretKey == "" {
@@ -111,14 +111,14 @@ func (s *Store) Load() (*HostCredentials, error) {
 }
 
 // Save writes credentials to the file with proper permissions.
-func (s *Store) Save(creds *HostCredentials) error {
+func (s *Store) Save(creds *BrokerCredentials) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if creds == nil {
 		return errors.New("credentials cannot be nil")
 	}
-	if creds.HostID == "" {
+	if creds.BrokerID == "" {
 		return errors.New("hostId is required")
 	}
 	if creds.SecretKey == "" {
@@ -176,9 +176,9 @@ func (s *Store) GetSecretKey() ([]byte, error) {
 // SaveFromJoinResponse creates and saves credentials from a join response.
 // This is a convenience method for the common use case of saving credentials
 // immediately after completing a host join.
-func (s *Store) SaveFromJoinResponse(hostID, secretKey, hubEndpoint string) error {
-	creds := &HostCredentials{
-		HostID:       hostID,
+func (s *Store) SaveFromJoinResponse(brokerID, secretKey, hubEndpoint string) error {
+	creds := &BrokerCredentials{
+		BrokerID:     brokerID,
 		SecretKey:    secretKey,
 		HubEndpoint:  hubEndpoint,
 		RegisteredAt: time.Now(),
@@ -201,7 +201,7 @@ func (s *Store) ModTime() time.Time {
 
 // LoadIfChanged loads credentials if the file has been modified since lastModTime.
 // Returns the new credentials and mod time if changed, or nil if unchanged.
-func (s *Store) LoadIfChanged(lastModTime time.Time) (*HostCredentials, time.Time, error) {
+func (s *Store) LoadIfChanged(lastModTime time.Time) (*BrokerCredentials, time.Time, error) {
 	currentModTime := s.ModTime()
 	if currentModTime.IsZero() {
 		return nil, time.Time{}, nil // File doesn't exist

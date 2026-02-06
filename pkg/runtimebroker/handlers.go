@@ -81,18 +81,18 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		runtimeType = s.runtime.Name()
 	}
 
-	resp := HostInfoResponse{
-		HostID:  s.config.HostID,
-		Name:    s.config.HostName,
+	resp := BrokerInfoResponse{
+		BrokerID:  s.config.BrokerID,
+		Name:    s.config.BrokerName,
 		Version: s.version,
 		Mode:    s.config.Mode,
-		Capabilities: &HostCapabilities{
+		Capabilities: &BrokerCapabilities{
 			WebPTY: false, // TODO: Implement WebSocket PTY
 			Sync:   true,
 			Attach: true,
 			Exec:   true,
 		},
-		Profiles: []HostProfile{
+		Profiles: []BrokerProfile{
 			{Name: "default", Type: runtimeType, Available: true},
 		},
 	}

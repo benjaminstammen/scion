@@ -36,8 +36,8 @@ type HubServerConfig struct {
 	AdminEmails []string `json:"adminEmails" yaml:"adminEmails" koanf:"adminEmails"`
 }
 
-// RuntimeHostConfig holds configuration for the Runtime Host API server.
-type RuntimeHostConfig struct {
+// RuntimeBrokerConfig holds configuration for the Runtime Host API server.
+type RuntimeBrokerConfig struct {
 	// Enabled indicates whether the Runtime Host API is enabled
 	Enabled bool `json:"enabled" yaml:"enabled" koanf:"enabled"`
 	// Port is the HTTP port to listen on (default 9800)
@@ -55,9 +55,9 @@ type RuntimeHostConfig struct {
 	HubEndpoint string `json:"hubEndpoint" yaml:"hubEndpoint" koanf:"hubEndpoint"`
 
 	// HostID is a unique identifier for this runtime host (auto-generated if empty)
-	HostID string `json:"hostId" yaml:"hostId" koanf:"hostId"`
+	BrokerID string `json:"hostId" yaml:"hostId" koanf:"hostId"`
 	// HostName is a human-readable name for this runtime host
-	HostName string `json:"hostName" yaml:"hostName" koanf:"hostName"`
+	BrokerName string `json:"brokerName" yaml:"brokerName" koanf:"brokerName"`
 
 	// CORS settings
 	CORSEnabled        bool     `json:"corsEnabled" yaml:"corsEnabled" koanf:"corsEnabled"`
@@ -69,7 +69,7 @@ type RuntimeHostConfig struct {
 
 // Runtime Host operational modes
 const (
-	RuntimeHostModeConnected = "connected"
+	RuntimeBrokerModeConnected = "connected"
 )
 
 // DatabaseConfig holds database connection settings.
@@ -125,7 +125,7 @@ type GlobalConfig struct {
 	Hub HubServerConfig `json:"hub" yaml:"hub" koanf:"hub"`
 
 	// Runtime Host API server settings
-	RuntimeHost RuntimeHostConfig `json:"runtimeHost" yaml:"runtimeHost" koanf:"runtimeHost"`
+	RuntimeBroker RuntimeBrokerConfig `json:"runtimeHost" yaml:"runtimeHost" koanf:"runtimeHost"`
 
 	// Database settings
 	Database DatabaseConfig `json:"database" yaml:"database" koanf:"database"`
@@ -162,21 +162,21 @@ func DefaultGlobalConfig() GlobalConfig {
 			CORSEnabled:  true,
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-			CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Host-Token", "X-Scion-Agent-Token", "X-API-Key"},
+			CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Broker-Token", "X-Scion-Agent-Token", "X-API-Key"},
 			CORSMaxAge:         3600,
 			AdminEmails:        []string{},
 		},
-		RuntimeHost: RuntimeHostConfig{
+		RuntimeBroker: RuntimeBrokerConfig{
 			Enabled:      false,
 			Port:         9800,
 			Host:         "0.0.0.0",
 			ReadTimeout:  30 * time.Second,
 			WriteTimeout: 120 * time.Second, // Longer for agent operations
-			Mode:         RuntimeHostModeConnected,
+			Mode:         RuntimeBrokerModeConnected,
 			CORSEnabled:  true,
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-			CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Host-Token", "X-API-Key"},
+			CORSAllowedHeaders: []string{"Authorization", "Content-Type", "X-Scion-Broker-Token", "X-API-Key"},
 			CORSMaxAge:         3600,
 		},
 		Database: DatabaseConfig{
@@ -216,18 +216,18 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 		"hub.corsAllowedMethods": defaults.Hub.CORSAllowedMethods,
 		"hub.corsAllowedHeaders": defaults.Hub.CORSAllowedHeaders,
 		"hub.corsMaxAge":         defaults.Hub.CORSMaxAge,
-		// RuntimeHost defaults
-		"runtimeHost.enabled":            defaults.RuntimeHost.Enabled,
-		"runtimeHost.port":               defaults.RuntimeHost.Port,
-		"runtimeHost.host":               defaults.RuntimeHost.Host,
-		"runtimeHost.readTimeout":        defaults.RuntimeHost.ReadTimeout,
-		"runtimeHost.writeTimeout":       defaults.RuntimeHost.WriteTimeout,
-		"runtimeHost.mode":               defaults.RuntimeHost.Mode,
-		"runtimeHost.corsEnabled":        defaults.RuntimeHost.CORSEnabled,
-		"runtimeHost.corsAllowedOrigins": defaults.RuntimeHost.CORSAllowedOrigins,
-		"runtimeHost.corsAllowedMethods": defaults.RuntimeHost.CORSAllowedMethods,
-		"runtimeHost.corsAllowedHeaders": defaults.RuntimeHost.CORSAllowedHeaders,
-		"runtimeHost.corsMaxAge":         defaults.RuntimeHost.CORSMaxAge,
+		// RuntimeBroker defaults
+		"runtimeHost.enabled":            defaults.RuntimeBroker.Enabled,
+		"runtimeHost.port":               defaults.RuntimeBroker.Port,
+		"runtimeHost.host":               defaults.RuntimeBroker.Host,
+		"runtimeHost.readTimeout":        defaults.RuntimeBroker.ReadTimeout,
+		"runtimeHost.writeTimeout":       defaults.RuntimeBroker.WriteTimeout,
+		"runtimeHost.mode":               defaults.RuntimeBroker.Mode,
+		"runtimeHost.corsEnabled":        defaults.RuntimeBroker.CORSEnabled,
+		"runtimeHost.corsAllowedOrigins": defaults.RuntimeBroker.CORSAllowedOrigins,
+		"runtimeHost.corsAllowedMethods": defaults.RuntimeBroker.CORSAllowedMethods,
+		"runtimeHost.corsAllowedHeaders": defaults.RuntimeBroker.CORSAllowedHeaders,
+		"runtimeHost.corsMaxAge":         defaults.RuntimeBroker.CORSMaxAge,
 		// Database defaults
 		"database.driver": defaults.Database.Driver,
 		"database.url":    defaults.Database.URL,
@@ -298,7 +298,7 @@ func LoadGlobalConfig(configPath string) (*GlobalConfig, error) {
 			CORSAllowedMethods: make([]string, 0),
 			CORSAllowedHeaders: make([]string, 0),
 		},
-		RuntimeHost: RuntimeHostConfig{
+		RuntimeBroker: RuntimeBrokerConfig{
 			CORSAllowedOrigins: make([]string, 0),
 			CORSAllowedMethods: make([]string, 0),
 			CORSAllowedHeaders: make([]string, 0),
@@ -357,7 +357,7 @@ func envKeyToConfigKey(envKey string) string {
 		"readtimeout":       "readTimeout",
 		"writetimeout":      "writeTimeout",
 		"hostid":            "hostId",
-		"hostname":          "hostName",
+		"hostname":          "brokerName",
 		"hubendpoint":       "hubEndpoint",
 		"devmode":           "devMode",
 		"devtoken":          "devToken",

@@ -81,7 +81,7 @@ type mockHubClient struct {
 func (m *mockHubClient) Agents() hubclient.AgentService                  { return nil }
 func (m *mockHubClient) GroveAgents(groveID string) hubclient.AgentService { return nil }
 func (m *mockHubClient) Groves() hubclient.GroveService                  { return nil }
-func (m *mockHubClient) RuntimeHosts() hubclient.RuntimeHostService      { return nil }
+func (m *mockHubClient) RuntimeBrokers() hubclient.RuntimeBrokerService      { return nil }
 func (m *mockHubClient) Templates() hubclient.TemplateService            { return m.templates }
 func (m *mockHubClient) Workspace() hubclient.WorkspaceService           { return nil }
 func (m *mockHubClient) Users() hubclient.UserService                    { return nil }

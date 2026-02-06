@@ -121,8 +121,8 @@ type AgentInfo struct {
 	Visibility string `json:"visibility,omitempty"` // Access level: private, team, public
 
 	// Hosted/distributed mode fields
-	RuntimeHostID   string `json:"runtimeHostId,omitempty"`   // ID of the Runtime Host managing this agent
-	RuntimeHostType string `json:"runtimeHostType,omitempty"` // Type: docker, kubernetes, apple
+	RuntimeBrokerID   string `json:"runtimeBrokerId,omitempty"`   // ID of the Runtime Host managing this agent
+	RuntimeBrokerType string `json:"runtimeBrokerType,omitempty"` // Type: docker, kubernetes, apple
 	RuntimeState    string `json:"runtimeState,omitempty"`    // Low-level runtime state
 	HubEndpoint     string `json:"hubEndpoint,omitempty"`     // Scion Hub URL if connected
 	WebPTYEnabled   bool   `json:"webPtyEnabled,omitempty"`   // Whether web terminal access is available

@@ -44,7 +44,7 @@ const (
 // UnifiedAuthMiddleware creates middleware that handles all authentication types.
 // It processes tokens in priority order:
 // 1. Agent tokens (X-Scion-Agent-Token or agent JWT in Bearer)
-// 2. Host HMAC auth (X-Scion-Host-ID header) - passed through to HostAuthMiddleware
+// 2. Host HMAC auth (X-Scion-Broker-ID header) - passed through to BrokerAuthMiddleware
 // 3. Development tokens (scion_dev_* prefix)
 // 4. API keys (sk_live_* or sk_test_* prefix)
 // 5. User JWTs
@@ -104,11 +104,11 @@ func UnifiedAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				// Bearer token wasn't an agent token, continue to user auth
 			}
 
-			// Step 2: Check for host HMAC authentication (X-Scion-Host-ID header)
-			// If present, pass through to HostAuthMiddleware which runs next
-			if hostID := r.Header.Get("X-Scion-Host-ID"); hostID != "" {
+			// Step 2: Check for host HMAC authentication (X-Scion-Broker-ID header)
+			// If present, pass through to BrokerAuthMiddleware which runs next
+			if brokerID := r.Header.Get("X-Scion-Broker-ID"); brokerID != "" {
 				if cfg.Debug {
-					slog.Debug("Host auth headers present, deferring to HostAuthMiddleware", "hostID", hostID)
+					slog.Debug("Host auth headers present, deferring to BrokerAuthMiddleware", "brokerID", brokerID)
 				}
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return

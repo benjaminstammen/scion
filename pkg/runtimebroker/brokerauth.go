@@ -11,8 +11,8 @@ import (
 	"github.com/ptone/scion-agent/pkg/apiclient"
 )
 
-// HostAuthConfig configures host-side HMAC authentication.
-type HostAuthConfig struct {
+// BrokerAuthConfig configures host-side HMAC authentication.
+type BrokerAuthConfig struct {
 	// Enabled controls whether authentication is enforced.
 	Enabled bool
 	// MaxClockSkew is the maximum allowed time difference between client and server.
@@ -24,28 +24,28 @@ type HostAuthConfig struct {
 	AllowUnauthenticated bool
 }
 
-// DefaultHostAuthConfig returns the default host authentication configuration.
-func DefaultHostAuthConfig() HostAuthConfig {
-	return HostAuthConfig{
+// DefaultBrokerAuthConfig returns the default host authentication configuration.
+func DefaultBrokerAuthConfig() BrokerAuthConfig {
+	return BrokerAuthConfig{
 		Enabled:              false,
 		MaxClockSkew:         5 * time.Minute,
 		AllowUnauthenticated: true,
 	}
 }
 
-// HostAuthMiddleware provides HMAC-based authentication for incoming requests.
+// BrokerAuthMiddleware provides HMAC-based authentication for incoming requests.
 // This verifies that requests from the Hub are properly signed.
-type HostAuthMiddleware struct {
-	config HostAuthConfig
+type BrokerAuthMiddleware struct {
+	config BrokerAuthConfig
 }
 
-// NewHostAuthMiddleware creates a new host authentication middleware.
-func NewHostAuthMiddleware(cfg HostAuthConfig) *HostAuthMiddleware {
-	return &HostAuthMiddleware{config: cfg}
+// NewBrokerAuthMiddleware creates a new host authentication middleware.
+func NewBrokerAuthMiddleware(cfg BrokerAuthConfig) *BrokerAuthMiddleware {
+	return &BrokerAuthMiddleware{config: cfg}
 }
 
 // Middleware returns an HTTP middleware handler that validates HMAC signatures.
-func (m *HostAuthMiddleware) Middleware(next http.Handler) http.Handler {
+func (m *BrokerAuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !m.config.Enabled {
 			next.ServeHTTP(w, r)
@@ -53,13 +53,13 @@ func (m *HostAuthMiddleware) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Extract HMAC headers
-		hostID := r.Header.Get(apiclient.HeaderHostID)
+		brokerID := r.Header.Get(apiclient.HeaderBrokerID)
 		timestamp := r.Header.Get(apiclient.HeaderTimestamp)
 		nonce := r.Header.Get(apiclient.HeaderNonce)
 		signature := r.Header.Get(apiclient.HeaderSignature)
 
 		// If no HMAC headers present, check if unauthenticated requests are allowed
-		if hostID == "" && timestamp == "" && signature == "" {
+		if brokerID == "" && timestamp == "" && signature == "" {
 			if m.config.AllowUnauthenticated {
 				next.ServeHTTP(w, r)
 				return
@@ -69,8 +69,8 @@ func (m *HostAuthMiddleware) Middleware(next http.Handler) http.Handler {
 		}
 
 		// Validate required headers are all present
-		if hostID == "" {
-			m.writeError(w, "missing X-Scion-Host-ID header")
+		if brokerID == "" {
+			m.writeError(w, "missing X-Scion-Broker-ID header")
 			return
 		}
 		if timestamp == "" {
@@ -119,7 +119,7 @@ func (m *HostAuthMiddleware) Middleware(next http.Handler) http.Handler {
 }
 
 // writeError writes an authentication error response.
-func (m *HostAuthMiddleware) writeError(w http.ResponseWriter, message string) {
+func (m *BrokerAuthMiddleware) writeError(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 	fmt.Fprintf(w, `{"error":{"code":"host_auth_failed","message":%q}}`, message)
@@ -127,11 +127,11 @@ func (m *HostAuthMiddleware) writeError(w http.ResponseWriter, message string) {
 
 // UpdateSecretKey updates the secret key used for verification.
 // This can be used when credentials are rotated.
-func (m *HostAuthMiddleware) UpdateSecretKey(key []byte) {
+func (m *BrokerAuthMiddleware) UpdateSecretKey(key []byte) {
 	m.config.SecretKey = key
 }
 
 // SetEnabled enables or disables authentication.
-func (m *HostAuthMiddleware) SetEnabled(enabled bool) {
+func (m *BrokerAuthMiddleware) SetEnabled(enabled bool) {
 	m.config.Enabled = enabled
 }

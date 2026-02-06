@@ -10,59 +10,59 @@ import (
 	"github.com/ptone/scion-agent/pkg/hubclient"
 )
 
-// mockRuntimeHostService implements hubclient.RuntimeHostService for testing.
-type mockRuntimeHostService struct {
+// mockRuntimeBrokerService implements hubclient.RuntimeBrokerService for testing.
+type mockRuntimeBrokerService struct {
 	mu             sync.Mutex
 	heartbeatCalls []mockHeartbeatCall
 	heartbeatErr   error
 }
 
 type mockHeartbeatCall struct {
-	HostID    string
-	Heartbeat *hubclient.HostHeartbeat
+	BrokerID string
+	Heartbeat *hubclient.BrokerHeartbeat
 	Time      time.Time
 }
 
-func (m *mockRuntimeHostService) Create(ctx context.Context, req *hubclient.CreateHostRequest) (*hubclient.CreateHostResponse, error) {
+func (m *mockRuntimeBrokerService) Create(ctx context.Context, req *hubclient.CreateBrokerRequest) (*hubclient.CreateBrokerResponse, error) {
 	return nil, nil
 }
 
-func (m *mockRuntimeHostService) Join(ctx context.Context, req *hubclient.JoinHostRequest) (*hubclient.JoinHostResponse, error) {
+func (m *mockRuntimeBrokerService) Join(ctx context.Context, req *hubclient.JoinBrokerRequest) (*hubclient.JoinBrokerResponse, error) {
 	return nil, nil
 }
 
-func (m *mockRuntimeHostService) List(ctx context.Context, opts *hubclient.ListHostsOptions) (*hubclient.ListHostsResponse, error) {
+func (m *mockRuntimeBrokerService) List(ctx context.Context, opts *hubclient.ListBrokersOptions) (*hubclient.ListBrokersResponse, error) {
 	return nil, nil
 }
 
-func (m *mockRuntimeHostService) Get(ctx context.Context, hostID string) (*hubclient.RuntimeHost, error) {
+func (m *mockRuntimeBrokerService) Get(ctx context.Context, brokerID string) (*hubclient.RuntimeBroker, error) {
 	return nil, nil
 }
 
-func (m *mockRuntimeHostService) Update(ctx context.Context, hostID string, req *hubclient.UpdateHostRequest) (*hubclient.RuntimeHost, error) {
+func (m *mockRuntimeBrokerService) Update(ctx context.Context, brokerID string, req *hubclient.UpdateBrokerRequest) (*hubclient.RuntimeBroker, error) {
 	return nil, nil
 }
 
-func (m *mockRuntimeHostService) Delete(ctx context.Context, hostID string) error {
+func (m *mockRuntimeBrokerService) Delete(ctx context.Context, brokerID string) error {
 	return nil
 }
 
-func (m *mockRuntimeHostService) ListGroves(ctx context.Context, hostID string) (*hubclient.ListHostGrovesResponse, error) {
+func (m *mockRuntimeBrokerService) ListGroves(ctx context.Context, brokerID string) (*hubclient.ListBrokerGrovesResponse, error) {
 	return nil, nil
 }
 
-func (m *mockRuntimeHostService) Heartbeat(ctx context.Context, hostID string, status *hubclient.HostHeartbeat) error {
+func (m *mockRuntimeBrokerService) Heartbeat(ctx context.Context, brokerID string, status *hubclient.BrokerHeartbeat) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.heartbeatCalls = append(m.heartbeatCalls, mockHeartbeatCall{
-		HostID:    hostID,
+		BrokerID:    brokerID,
 		Heartbeat: status,
 		Time:      time.Now(),
 	})
 	return m.heartbeatErr
 }
 
-func (m *mockRuntimeHostService) getHeartbeatCalls() []mockHeartbeatCall {
+func (m *mockRuntimeBrokerService) getHeartbeatCalls() []mockHeartbeatCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]mockHeartbeatCall{}, m.heartbeatCalls...)
@@ -103,7 +103,7 @@ func (m *heartbeatMockManager) Watch(ctx context.Context, agentID string) (<-cha
 }
 
 func TestHeartbeatService_StartStop(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", 100*time.Millisecond, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -134,7 +134,7 @@ func TestHeartbeatService_StartStop(t *testing.T) {
 }
 
 func TestHeartbeatService_SendsInitialHeartbeat(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", time.Hour, nil) // Long interval
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,8 +151,8 @@ func TestHeartbeatService_SendsInitialHeartbeat(t *testing.T) {
 		t.Errorf("Expected exactly 1 initial heartbeat, got %d", len(calls))
 	}
 
-	if calls[0].HostID != "test-host" {
-		t.Errorf("Expected host ID 'test-host', got %q", calls[0].HostID)
+	if calls[0].BrokerID != "test-host" {
+		t.Errorf("Expected host ID 'test-host', got %q", calls[0].BrokerID)
 	}
 
 	if calls[0].Heartbeat.Status != "online" {
@@ -161,7 +161,7 @@ func TestHeartbeatService_SendsInitialHeartbeat(t *testing.T) {
 }
 
 func TestHeartbeatService_MinInterval(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	// Try to create with interval less than minimum
 	svc := NewHeartbeatService(client, "test-host", 1*time.Millisecond, nil)
 
@@ -171,7 +171,7 @@ func TestHeartbeatService_MinInterval(t *testing.T) {
 }
 
 func TestHeartbeatService_ForceHeartbeat(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
 
 	err := svc.ForceHeartbeat(context.Background())
@@ -186,7 +186,7 @@ func TestHeartbeatService_ForceHeartbeat(t *testing.T) {
 }
 
 func TestHeartbeatService_IncludesAgentInfo(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	manager := &heartbeatMockManager{
 		agents: []api.AgentInfo{
 			{Name: "agent-1", GroveID: "grove-1", SessionStatus: "running"},
@@ -226,7 +226,7 @@ func TestHeartbeatService_IncludesAgentInfo(t *testing.T) {
 }
 
 func TestHeartbeatService_DoubleStart(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -242,7 +242,7 @@ func TestHeartbeatService_DoubleStart(t *testing.T) {
 }
 
 func TestHeartbeatService_DoubleStop(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -258,7 +258,7 @@ func TestHeartbeatService_DoubleStop(t *testing.T) {
 }
 
 func TestHeartbeatService_ContextCancellation(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -277,7 +277,7 @@ func TestHeartbeatService_ContextCancellation(t *testing.T) {
 }
 
 func TestHeartbeatService_StopNotStarted(t *testing.T) {
-	client := &mockRuntimeHostService{}
+	client := &mockRuntimeBrokerService{}
 	svc := NewHeartbeatService(client, "test-host", time.Hour, nil)
 
 	// Stop without starting should be a no-op

@@ -181,26 +181,26 @@ func GatewayTimeout(w http.ResponseWriter, message string) {
 
 // NoRuntimeHost writes a 422 Unprocessable Entity response when no runtime host
 // is available for agent creation. Includes available hosts as alternatives.
-func NoRuntimeHost(w http.ResponseWriter, message string, availableHosts []RuntimeHostSummary) {
+func NoRuntimeHost(w http.ResponseWriter, message string, availableHosts []RuntimeBrokerSummary) {
 	details := map[string]interface{}{
 		"availableHosts": availableHosts,
 	}
 	writeError(w, http.StatusUnprocessableEntity, ErrCodeNoRuntimeHost, message, details)
 }
 
-// RuntimeHostUnavailable writes a 503 Service Unavailable response when the
+// RuntimeBrokerUnavailable writes a 503 Service Unavailable response when the
 // specified runtime host is not available.
-func RuntimeHostUnavailable(w http.ResponseWriter, hostID string, availableHosts []RuntimeHostSummary) {
+func RuntimeBrokerUnavailable(w http.ResponseWriter, brokerID string, availableHosts []RuntimeBrokerSummary) {
 	details := map[string]interface{}{
-		"requestedHostId": hostID,
+		"requestedHostId": brokerID,
 		"availableHosts":  availableHosts,
 	}
 	writeError(w, http.StatusServiceUnavailable, ErrCodeRuntimeHostUnavail,
 		"Specified runtime host is unavailable", details)
 }
 
-// RuntimeHostSummary is a minimal representation of a runtime host for error responses.
-type RuntimeHostSummary struct {
+// RuntimeBrokerSummary is a minimal representation of a runtime host for error responses.
+type RuntimeBrokerSummary struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Status string `json:"status"`

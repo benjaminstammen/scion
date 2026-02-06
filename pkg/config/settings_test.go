@@ -523,8 +523,8 @@ func TestUpdateHubSettingsGlobal(t *testing.T) {
 			t.Fatal("expected Hub config to be present")
 		}
 
-		if s.Hub.HostID != "host-uuid-123" {
-			t.Errorf("expected hub.hostId 'host-uuid-123', got %q", s.Hub.HostID)
+		if s.Hub.BrokerID != "host-uuid-123" {
+			t.Errorf("expected hub.hostId 'host-uuid-123', got %q", s.Hub.BrokerID)
 		}
 
 		// Previous setting should still be present
@@ -535,7 +535,7 @@ func TestUpdateHubSettingsGlobal(t *testing.T) {
 }
 
 // TestHubSettingsLoadFromGlobal tests that hub settings from global are loaded into project settings.
-// This relates to Fix 6 from progress-report.md: RuntimeHost falls back to settings for hub endpoint.
+// This relates to Fix 6 from progress-report.md: RuntimeBroker falls back to settings for hub endpoint.
 func TestHubSettingsLoadFromGlobal(t *testing.T) {
 	tmpDir := t.TempDir()
 	originalHome := os.Getenv("HOME")
@@ -579,7 +579,7 @@ func TestHubSettingsLoadFromGlobal(t *testing.T) {
 		t.Errorf("expected hub.endpoint from global, got %q", s.Hub.Endpoint)
 	}
 
-	if s.Hub.HostID != "global-host-id" {
-		t.Errorf("expected hub.hostId from global, got %q", s.Hub.HostID)
+	if s.Hub.BrokerID != "global-host-id" {
+		t.Errorf("expected hub.hostId from global, got %q", s.Hub.BrokerID)
 	}
 }

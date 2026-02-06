@@ -34,7 +34,7 @@ type Agent struct {
 	Image         string `json:"image,omitempty"`
 	Detached      bool   `json:"detached"`
 	Runtime       string `json:"runtime,omitempty"`       // docker, kubernetes, apple
-	RuntimeHostID string `json:"runtimeHostId,omitempty"` // FK to RuntimeHost.ID
+	RuntimeBrokerID string `json:"runtimeBrokerId,omitempty"` // FK to RuntimeBroker.ID
 	WebPTYEnabled bool   `json:"webPtyEnabled,omitempty"`
 	TaskSummary   string `json:"taskSummary,omitempty"`
 	Message       string `json:"message,omitempty"`
@@ -89,9 +89,9 @@ type Grove struct {
 	GitRemote string `json:"gitRemote,omitempty"` // Normalized git remote URL (unique)
 
 	// Runtime host configuration
-	// DefaultRuntimeHostID is the runtime host used when creating agents without
-	// an explicit runtimeHostId. Set to the first host that registers with this grove.
-	DefaultRuntimeHostID string `json:"defaultRuntimeHostId,omitempty"`
+	// DefaultRuntimeBrokerID is the runtime host used when creating agents without
+	// an explicit runtimeBrokerId. Set to the first host that registers with this grove.
+	DefaultRuntimeBrokerID string `json:"defaultRuntimeBrokerId,omitempty"`
 
 	// Metadata (stored as JSON)
 	Labels      map[string]string `json:"labels,omitempty"`
@@ -111,8 +111,8 @@ type Grove struct {
 	ActiveHostCount int `json:"activeHostCount,omitempty"`
 }
 
-// RuntimeHost represents a compute node in the Hub database.
-type RuntimeHost struct {
+// RuntimeBroker represents a compute node in the Hub database.
+type RuntimeBroker struct {
 	// Identity
 	ID   string `json:"id"`   // UUID primary key
 	Name string `json:"name"` // Display name
@@ -128,10 +128,10 @@ type RuntimeHost struct {
 	LastHeartbeat   time.Time `json:"lastHeartbeat,omitempty"`
 
 	// Capabilities (stored as JSON)
-	Capabilities *HostCapabilities `json:"capabilities,omitempty"`
+	Capabilities *BrokerCapabilities `json:"capabilities,omitempty"`
 
 	// Profiles available (stored as JSON)
-	Profiles []HostProfile `json:"profiles,omitempty"`
+	Profiles []BrokerProfile `json:"profiles,omitempty"`
 
 	// Metadata
 	Labels      map[string]string `json:"labels,omitempty"`
@@ -145,15 +145,15 @@ type RuntimeHost struct {
 	Updated time.Time `json:"updated"`
 }
 
-// HostCapabilities describes what a runtime host can do.
-type HostCapabilities struct {
+// BrokerCapabilities describes what a runtime host can do.
+type BrokerCapabilities struct {
 	WebPTY bool `json:"webPty"`
 	Sync   bool `json:"sync"`
 	Attach bool `json:"attach"`
 }
 
-// HostProfile describes a runtime profile available on a host.
-type HostProfile struct {
+// BrokerProfile describes a runtime profile available on a host.
+type BrokerProfile struct {
 	Name      string `json:"name"`      // Profile name (e.g., "docker-default", "k8s-prod")
 	Type      string `json:"type"`      // docker, kubernetes, apple
 	Available bool   `json:"available"`
@@ -164,8 +164,8 @@ type HostProfile struct {
 // GroveContributor links a runtime host to a grove.
 type GroveContributor struct {
 	GroveID   string    `json:"groveId"`
-	HostID    string    `json:"hostId"`
-	HostName  string    `json:"hostName"`
+	BrokerID string    `json:"hostId"`
+	BrokerName string    `json:"brokerName"`
 	LocalPath string    `json:"localPath,omitempty"` // Filesystem path to the grove on this host (e.g., ~/.scion or /path/to/project/.scion)
 	Mode      string    `json:"mode"`                // connected, read-only
 	Status    string    `json:"status"`              // online, offline
@@ -312,9 +312,9 @@ const (
 // Host Authentication (Runtime Host HMAC Authentication)
 // =============================================================================
 
-// HostSecret stores the HMAC shared secret for a Runtime Host.
-type HostSecret struct {
-	HostID    string    `json:"hostId"`
+// BrokerSecret stores the HMAC shared secret for a Runtime Host.
+type BrokerSecret struct {
+	BrokerID string    `json:"hostId"`
 	SecretKey []byte    `json:"-"` // Never serialize - stored encrypted at rest
 	Algorithm string    `json:"algorithm"` // "hmac-sha256"
 	CreatedAt time.Time `json:"createdAt"`
@@ -323,38 +323,38 @@ type HostSecret struct {
 	Status    string    `json:"status"` // active, deprecated, revoked
 }
 
-// HostSecretStatus constants
+// BrokerSecretStatus constants
 const (
-	HostSecretStatusActive     = "active"
-	HostSecretStatusDeprecated = "deprecated"
-	HostSecretStatusRevoked    = "revoked"
+	BrokerSecretStatusActive     = "active"
+	BrokerSecretStatusDeprecated = "deprecated"
+	BrokerSecretStatusRevoked    = "revoked"
 )
 
-// HostSecretAlgorithm constants
+// BrokerSecretAlgorithm constants
 const (
-	HostSecretAlgorithmHMACSHA256 = "hmac-sha256"
+	BrokerSecretAlgorithmHMACSHA256 = "hmac-sha256"
 )
 
-// HostJoinToken is a short-lived token for host registration.
-type HostJoinToken struct {
-	HostID    string    `json:"hostId"`
+// BrokerJoinToken is a short-lived token for host registration.
+type BrokerJoinToken struct {
+	BrokerID string    `json:"hostId"`
 	TokenHash string    `json:"-"` // SHA-256 hash of token (never exposed)
 	ExpiresAt time.Time `json:"expiresAt"`
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy string    `json:"createdBy"` // User ID who created the token
 }
 
-// HostMode constants
+// BrokerMode constants
 const (
-	HostModeConnected = "connected"
-	HostModeReadOnly  = "read-only"
+	BrokerModeConnected = "connected"
+	BrokerModeReadOnly  = "read-only"
 )
 
-// HostStatus constants
+// BrokerStatus constants
 const (
-	HostStatusOnline   = "online"
-	HostStatusOffline  = "offline"
-	HostStatusDegraded = "degraded"
+	BrokerStatusOnline   = "online"
+	BrokerStatusOffline  = "offline"
+	BrokerStatusDegraded = "degraded"
 )
 
 // ListOptions provides pagination and filtering for list operations.
@@ -429,7 +429,7 @@ const (
 	ScopeHub         = "hub"
 	ScopeUser        = "user"
 	ScopeGrove       = "grove"
-	ScopeRuntimeHost = "runtime_host"
+	ScopeRuntimeBroker = "runtime_broker"
 )
 
 // =============================================================================
@@ -633,7 +633,7 @@ func (a *Agent) ToAPI() *api.AgentInfo {
 		Image:         a.Image,
 		Detached:      a.Detached,
 		Runtime:       a.Runtime,
-		RuntimeHostID: a.RuntimeHostID,
+		RuntimeBrokerID: a.RuntimeBrokerID,
 		WebPTYEnabled: a.WebPTYEnabled,
 		TaskSummary:   a.TaskSummary,
 

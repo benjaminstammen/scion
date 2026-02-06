@@ -259,7 +259,7 @@ func TestEnvKeyToConfigKey(t *testing.T) {
 		{"RUNTIMEHOST_READTIMEOUT", "runtimehost.readTimeout"},
 		{"RUNTIMEHOST_WRITETIMEOUT", "runtimehost.writeTimeout"},
 		{"RUNTIMEHOST_HOSTID", "runtimehost.hostId"},
-		{"RUNTIMEHOST_HOSTNAME", "runtimehost.hostName"},
+		{"RUNTIMEHOST_HOSTNAME", "runtimehost.brokerName"},
 		{"AUTH_DEVMODE", "auth.devMode"},
 		{"AUTH_DEVTOKEN", "auth.devToken"},
 		{"LOGLEVEL", "logLevel"},
@@ -383,8 +383,8 @@ hub:
 	})
 }
 
-// TestRuntimeHostHubEndpointConfiguration tests RuntimeHost hubEndpoint config.
-// This relates to Fix 4/6 in progress-report.md: RuntimeHost hub endpoint configuration.
+// TestRuntimeHostHubEndpointConfiguration tests RuntimeBroker hubEndpoint config.
+// This relates to Fix 4/6 in progress-report.md: RuntimeBroker hub endpoint configuration.
 func TestRuntimeHostHubEndpointConfiguration(t *testing.T) {
 	t.Run("from config file", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -403,20 +403,20 @@ runtimeHost:
 			t.Fatalf("failed to load config: %v", err)
 		}
 
-		if cfg.RuntimeHost.HubEndpoint != "https://rh-hub.example.com" {
-			t.Errorf("expected RuntimeHost.HubEndpoint 'https://rh-hub.example.com', got %q", cfg.RuntimeHost.HubEndpoint)
+		if cfg.RuntimeBroker.HubEndpoint != "https://rh-hub.example.com" {
+			t.Errorf("expected RuntimeBroker.HubEndpoint 'https://rh-hub.example.com', got %q", cfg.RuntimeBroker.HubEndpoint)
 		}
 	})
 
 	t.Run("default is empty", func(t *testing.T) {
 		cfg := DefaultGlobalConfig()
-		if cfg.RuntimeHost.HubEndpoint != "" {
-			t.Errorf("expected RuntimeHost.HubEndpoint to be empty by default, got %q", cfg.RuntimeHost.HubEndpoint)
+		if cfg.RuntimeBroker.HubEndpoint != "" {
+			t.Errorf("expected RuntimeBroker.HubEndpoint to be empty by default, got %q", cfg.RuntimeBroker.HubEndpoint)
 		}
 	})
 
 	// Note: Env var override for runtimeHost.hubEndpoint doesn't work due to case sensitivity
 	// in koanf. The env var SCION_SERVER_RUNTIMEHOST_HUBENDPOINT maps to "runtimehost.hubEndpoint"
 	// but the config expects "runtimeHost.hubEndpoint" (camelCase). This is a known limitation.
-	// For RuntimeHost hubEndpoint, use config file or the settings.yaml fallback (Fix 6).
+	// For RuntimeBroker hubEndpoint, use config file or the settings.yaml fallback (Fix 6).
 }

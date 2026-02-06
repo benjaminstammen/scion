@@ -23,7 +23,7 @@ func TestNew(t *testing.T) {
 	if client.Groves() == nil {
 		t.Error("expected non-nil groves service")
 	}
-	if client.RuntimeHosts() == nil {
+	if client.RuntimeBrokers() == nil {
 		t.Error("expected non-nil runtime hosts service")
 	}
 	if client.Templates() == nil {
@@ -246,12 +246,12 @@ func TestGrovesRegister(t *testing.T) {
 				Name:      req.Name,
 				GitRemote: req.GitRemote,
 			},
-			Host: &RuntimeHost{
+			Host: &RuntimeBroker{
 				ID:   "host-uuid",
 				Name: req.Host.Name,
 			},
 			Created:   true,
-			HostToken: "secret-host-token",
+			BrokerToken: "secret-host-token",
 		})
 	}))
 	defer server.Close()
@@ -273,8 +273,8 @@ func TestGrovesRegister(t *testing.T) {
 	if !resp.Created {
 		t.Error("expected created=true")
 	}
-	if resp.HostToken != "secret-host-token" {
-		t.Errorf("expected hostToken 'secret-host-token', got %q", resp.HostToken)
+	if resp.BrokerToken != "secret-host-token" {
+		t.Errorf("expected brokerToken 'secret-host-token', got %q", resp.BrokerToken)
 	}
 }
 
