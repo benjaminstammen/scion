@@ -40,7 +40,7 @@ const (
 	ErrCodeNoRuntimeBroker      = "no_runtime_broker"
 	ErrCodeRuntimeBrokerUnavail = "runtime_broker_unavailable"
 
-	// Host authentication error codes
+	// Broker authentication error codes
 	ErrCodeInvalidJoinToken = "invalid_join_token"
 	ErrCodeExpiredJoinToken = "expired_join_token"
 	ErrCodeBrokerAuthFailed   = "broker_auth_failed"
@@ -180,7 +180,7 @@ func GatewayTimeout(w http.ResponseWriter, message string) {
 }
 
 // NoRuntimeBroker writes a 422 Unprocessable Entity response when no runtime broker
-// is available for agent creation. Includes available hosts as alternatives.
+// is available for agent creation. Includes available brokers as alternatives.
 func NoRuntimeBroker(w http.ResponseWriter, message string, availableBrokers []RuntimeBrokerSummary) {
 	details := map[string]interface{}{
 		"availableBrokers": availableBrokers,
@@ -192,7 +192,7 @@ func NoRuntimeBroker(w http.ResponseWriter, message string, availableBrokers []R
 // specified runtime broker is not available.
 func RuntimeBrokerUnavailable(w http.ResponseWriter, brokerID string, availableBrokers []RuntimeBrokerSummary) {
 	details := map[string]interface{}{
-		"requestedHostId": brokerID,
+		"requestedBrokerId": brokerID,
 		"availableBrokers":  availableBrokers,
 	}
 	writeError(w, http.StatusServiceUnavailable, ErrCodeRuntimeBrokerUnavail,

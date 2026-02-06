@@ -423,13 +423,13 @@ func TestAgentCreate_MultipleContributors(t *testing.T) {
 		t.Errorf("expected error code %q, got %q", ErrCodeNoRuntimeBroker, errResp.Error.Code)
 	}
 
-	// Should include available hosts in the response details
-	availableHosts, ok := errResp.Error.Details["availableHosts"].([]interface{})
+	// Should include available brokers in the response details
+	availableBrokers, ok := errResp.Error.Details["availableBrokers"].([]interface{})
 	if !ok {
-		t.Fatalf("expected availableHosts in error details, got %v", errResp.Error.Details)
+		t.Fatalf("expected availableBrokers in error details, got %v", errResp.Error.Details)
 	}
-	if len(availableHosts) != 2 {
-		t.Errorf("expected 2 available hosts in error, got %d", len(availableHosts))
+	if len(availableBrokers) != 2 {
+		t.Errorf("expected 2 available brokers in error, got %d", len(availableBrokers))
 	}
 }
 
