@@ -691,14 +691,27 @@ func runHubGroves(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "ID", "NAME", "AGENTS", "GIT REMOTE")
-	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "------------------------------------", "--------------------", "----------", "----------")
+	// Fetch brokers to map IDs to names for the "Default Broker" column
+	brokerNames := make(map[string]string)
+	brokersResp, err := client.RuntimeBrokers().List(ctx, nil)
+	if err == nil {
+		for _, b := range brokersResp.Brokers {
+			brokerNames[b.ID] = b.Name
+		}
+	}
+
+	fmt.Printf("%-36s  %-20s  %-10s  %-20s  %s\n", "ID", "NAME", "AGENTS", "DEFAULT BROKER", "GIT REMOTE")
+	fmt.Printf("%-36s  %-20s  %-10s  %-20s  %s\n", "------------------------------------", "--------------------", "----------", "--------------------", "----------")
 	for _, g := range resp.Groves {
 		gitRemote := g.GitRemote
 		if len(gitRemote) > 40 {
 			gitRemote = gitRemote[:37] + "..."
 		}
-		fmt.Printf("%-36s  %-20s  %-10d  %s\n", g.ID, truncate(g.Name, 20), g.AgentCount, gitRemote)
+		brokerDisplay := g.DefaultRuntimeBrokerID
+		if name, ok := brokerNames[g.DefaultRuntimeBrokerID]; ok {
+			brokerDisplay = name
+		}
+		fmt.Printf("%-36s  %-20s  %-10d  %-20s  %s\n", g.ID, truncate(g.Name, 20), g.AgentCount, truncate(brokerDisplay, 20), gitRemote)
 	}
 
 	return nil
