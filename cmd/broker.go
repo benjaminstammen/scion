@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/brokercredentials"
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/daemon"
@@ -992,16 +993,21 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 						status.BrokerName = broker.Name
 						status.BrokerStatus = broker.Status
 						status.LastHeartbeat = broker.LastHeartbeat
+					} else if apiclient.IsNotFoundError(err) {
+						// Broker ID exists locally but not on Hub - not actually registered
+						status.Registered = false
 					}
 
-					// Get groves this broker provides for
-					grovesResp, err := client.RuntimeBrokers().ListGroves(ctx, status.BrokerID)
-					if err == nil && grovesResp != nil {
-						for _, g := range grovesResp.Groves {
-							status.Groves = append(status.Groves, brokerGroveStatus{
-								ID:   g.GroveID,
-								Name: g.GroveName,
-							})
+					// Get groves this broker provides for (only if still registered)
+					if status.Registered {
+						grovesResp, err := client.RuntimeBrokers().ListGroves(ctx, status.BrokerID)
+						if err == nil && grovesResp != nil {
+							for _, g := range grovesResp.Groves {
+								status.Groves = append(status.Groves, brokerGroveStatus{
+									ID:   g.GroveID,
+									Name: g.GroveName,
+								})
+							}
 						}
 					}
 				}
