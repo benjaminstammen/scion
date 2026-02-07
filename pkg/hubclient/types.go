@@ -123,6 +123,7 @@ type RuntimeBroker struct {
 	Annotations     map[string]string   `json:"annotations,omitempty"`
 	Endpoint        string              `json:"endpoint,omitempty"`
 	Groves          []BrokerGroveInfo   `json:"groves,omitempty"`
+	AutoProvide     bool                `json:"autoProvide,omitempty"` // Automatically add as provider for new groves
 	Created         time.Time           `json:"created"`
 	Updated         time.Time           `json:"updated"`
 	CreatedBy       string              `json:"createdBy,omitempty"` // User ID who registered this broker

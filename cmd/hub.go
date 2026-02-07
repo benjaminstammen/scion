@@ -698,14 +698,18 @@ func runHubBrokers(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "ID", "NAME", "STATUS", "LAST SEEN")
-	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "------------------------------------", "--------------------", "----------", "---------------")
+	fmt.Printf("%-36s  %-20s  %-10s  %-12s  %s\n", "ID", "NAME", "STATUS", "AUTO-PROVIDE", "LAST SEEN")
+	fmt.Printf("%-36s  %-20s  %-10s  %-12s  %s\n", "------------------------------------", "--------------------", "----------", "------------", "---------------")
 	for _, h := range resp.Brokers {
 		lastSeen := "-"
 		if !h.LastHeartbeat.IsZero() {
 			lastSeen = formatRelativeTime(h.LastHeartbeat)
 		}
-		fmt.Printf("%-36s  %-20s  %-10s  %s\n", h.ID, truncate(h.Name, 20), h.Status, lastSeen)
+		autoProvide := "no"
+		if h.AutoProvide {
+			autoProvide = "yes"
+		}
+		fmt.Printf("%-36s  %-20s  %-10s  %-12s  %s\n", h.ID, truncate(h.Name, 20), h.Status, autoProvide, lastSeen)
 	}
 
 	return nil
