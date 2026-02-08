@@ -195,6 +195,8 @@ type RemoteAgentInfo struct {
 	ID              string `json:"id"`
 	AgentID         string `json:"agentId"`
 	Name            string `json:"name"`
+	Template        string `json:"template,omitempty"`
+	Runtime         string `json:"runtime,omitempty"`
 	Status          string `json:"status"`
 	ContainerStatus string `json:"containerStatus,omitempty"`
 }

@@ -385,6 +385,13 @@ func (d *HTTPAgentDispatcher) DispatchAgentCreate(ctx context.Context, agent *st
 		if resp.Agent.ID != "" {
 			agent.RuntimeState = "container:" + resp.Agent.ID
 		}
+		// Capture template and runtime from the broker response
+		if resp.Agent.Template != "" {
+			agent.Template = resp.Agent.Template
+		}
+		if resp.Agent.Runtime != "" {
+			agent.Runtime = resp.Agent.Runtime
+		}
 	}
 
 	return nil

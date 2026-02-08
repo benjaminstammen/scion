@@ -261,9 +261,10 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}(),
 		Resume: opts.Resume,
 		Labels: map[string]string{
-			"scion.agent": "true",
-			"scion.name":  opts.Name,
-			"scion.grove": groveName,
+			"scion.agent":    "true",
+			"scion.name":     opts.Name,
+			"scion.grove":    groveName,
+			"scion.template": template,
 		},
 		Annotations: map[string]string{
 			"scion.grove_path": projectDir,

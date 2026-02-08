@@ -74,6 +74,8 @@ type AgentResponse struct {
 	ID              string            `json:"id,omitempty"`
 	AgentID         string            `json:"agentId"`
 	Name            string            `json:"name"`
+	Template        string            `json:"template,omitempty"`  // Template name used
+	RuntimeType     string            `json:"runtime,omitempty"`   // Runtime type (docker, kubernetes, apple)
 	GroveID         string            `json:"groveId,omitempty"`
 	UserID          string            `json:"userId,omitempty"`
 	Status          string            `json:"status"`
@@ -81,7 +83,7 @@ type AgentResponse struct {
 	Ready           bool              `json:"ready,omitempty"`
 	ContainerStatus string            `json:"containerStatus,omitempty"`
 	Config          *AgentConfig      `json:"config,omitempty"`
-	Runtime         *AgentRuntime     `json:"runtime,omitempty"`
+	Runtime         *AgentRuntime     `json:"runtimeInfo,omitempty"` // Renamed JSON tag to avoid conflict
 	Labels          map[string]string `json:"labels,omitempty"`
 	CreatedAt       time.Time         `json:"createdAt,omitempty"`
 	UpdatedAt       time.Time         `json:"updatedAt,omitempty"`
@@ -231,6 +233,8 @@ func AgentInfoToResponse(info api.AgentInfo) AgentResponse {
 		ID:              info.ID,
 		AgentID:         info.AgentID,
 		Name:            info.Name,
+		Template:        info.Template,
+		RuntimeType:     info.Runtime,
 		GroveID:         info.GroveID,
 		Status:          status,
 		ContainerStatus: info.ContainerStatus,
