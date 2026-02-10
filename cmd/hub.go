@@ -1504,6 +1504,12 @@ func runHubLink(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("linking cancelled")
 	}
 
+	// Verify authentication before proceeding
+	authInfo := getAuthInfo(settings, endpoint)
+	if authInfo.MethodType == "none" {
+		return fmt.Errorf("not authenticated to Hub at %s\n\nPlease log in first:\n  scion hub auth login", endpoint)
+	}
+
 	// Create Hub client
 	client, err := getHubClient(settings)
 	if err != nil {
@@ -1541,7 +1547,7 @@ func runHubLink(cmd *cobra.Command, args []string) error {
 			Name: groveName,
 		})
 		if err != nil {
-			util.Debugf("Warning: failed to search for matching groves: %v", err)
+			return fmt.Errorf("failed to search for matching groves: %w", err)
 		}
 
 		if len(resp.Groves) > 0 {
