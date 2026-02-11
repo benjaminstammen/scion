@@ -66,6 +66,23 @@ The Scion Hub and Runtime Broker use structured logging (`slog`) with an OpenTel
     - `roles/cloudtrace.agent`
     - `roles/monitoring.metricWriter`
 
+### Direct Cloud Logging (Alternative)
+
+As an alternative to the OTel pipeline, the Hub and Broker can send logs directly to Google Cloud Logging using the `cloud.google.com/go/logging` client library. This is simpler to set up when you only need log forwarding without traces or metrics:
+
+```bash
+# Enable direct Cloud Logging
+export SCION_CLOUD_LOGGING=true
+export SCION_GCP_PROJECT_ID="your-project-id"
+
+# Optional: customize the log name (default: "scion")
+export SCION_CLOUD_LOGGING_LOG_ID="scion-hub"
+
+scion server start --enable-hub
+```
+
+Both approaches can be used simultaneously — OTel for the full telemetry pipeline and Cloud Logging for direct log delivery.
+
 ### Configuring Agent Telemetry
 
 Agents use `sciontool` as their init process, which includes an embedded OTLP forwarder. This forwarder must be configured to point to your cloud backend.

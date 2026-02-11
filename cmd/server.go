@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -185,8 +186,25 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		defer logCleanup()
 	}
 
-	// Setup logging with optional OTel bridge
-	logging.SetupWithOTel(component, enableDebug, useGCP, logProvider)
+	// Initialize direct Cloud Logging if enabled
+	var cloudHandler slog.Handler
+	if logging.IsCloudLoggingEnabled() {
+		logLevel := logging.ResolveLogLevel(enableDebug)
+		cfg := logging.CloudLoggingConfig{
+			Component: component,
+		}
+		ch, cloudLogCleanup, cloudErr := logging.NewCloudHandler(ctx, cfg, logLevel)
+		if cloudErr != nil {
+			log.Printf("Warning: failed to initialize Cloud Logging: %v", cloudErr)
+		} else {
+			cloudHandler = ch
+			defer cloudLogCleanup()
+			log.Printf("Cloud Logging enabled (logId=%s, project=%s)", logging.FormatLogID(), logging.FormatProjectID())
+		}
+	}
+
+	// Setup logging with optional OTel bridge and Cloud Logging handler
+	logging.SetupWithOTel(component, enableDebug, useGCP, logProvider, cloudHandler)
 
 	// Load configuration
 	cfg, err := config.LoadGlobalConfig(serverConfigPath)

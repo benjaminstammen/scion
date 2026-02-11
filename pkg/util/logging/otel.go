@@ -93,17 +93,25 @@ func NewOTelHandler(component string, lp log.LoggerProvider) slog.Handler {
 
 // SetupWithOTel initializes the global logger with optional OTel bridge.
 // If lp is nil, falls back to standard Setup behavior.
-func SetupWithOTel(component string, debug bool, useGCP bool, lp log.LoggerProvider) {
+// Extra handlers (e.g., CloudHandler) are appended to the handler chain.
+func SetupWithOTel(component string, debug bool, useGCP bool, lp log.LoggerProvider, extraHandlers ...slog.Handler) {
 	// Create the base handler (same logic as Setup)
 	baseHandler := createBaseHandler(component, debug, useGCP)
 
-	var handler slog.Handler
+	// Collect all handlers
+	handlers := []slog.Handler{baseHandler}
+
 	if lp != nil {
-		// Create OTel handler and combine with base
-		otelHandler := NewOTelHandler(component, lp)
-		handler = newMultiHandler(baseHandler, otelHandler)
+		handlers = append(handlers, NewOTelHandler(component, lp))
+	}
+
+	handlers = append(handlers, extraHandlers...)
+
+	var handler slog.Handler
+	if len(handlers) == 1 {
+		handler = handlers[0]
 	} else {
-		handler = baseHandler
+		handler = newMultiHandler(handlers...)
 	}
 
 	logger := slog.New(handler)

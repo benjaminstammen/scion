@@ -62,9 +62,13 @@ With `SCION_LOG_GCP=true`, logs use GCP's expected format:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SCION_LOG_GCP` | Enable GCP Cloud Logging format | `false` |
+| `SCION_LOG_GCP` | Enable GCP Cloud Logging JSON format on stdout | `false` |
 | `SCION_LOG_LEVEL` | Log level (`debug`, `info`, `warn`, `error`) | `info` |
-| `K_SERVICE` | Auto-enables GCP logging (set by Cloud Run) | - |
+| `K_SERVICE` | Auto-enables GCP logging format (set by Cloud Run) | - |
+| `SCION_CLOUD_LOGGING` | Send logs directly to Cloud Logging via client library | `false` |
+| `SCION_CLOUD_LOGGING_LOG_ID` | Log name in Cloud Logging | `scion` |
+| `SCION_GCP_PROJECT_ID` | GCP project ID (priority 1 for Cloud Logging) | auto-detect |
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID (priority 2 for Cloud Logging) | - |
 
 ## Sending Logs to GCP from Local Machine
 
@@ -110,6 +114,79 @@ Navigate to **Logging > Logs Explorer** in the GCP Console and filter by:
 ```
 logName="projects/YOUR_PROJECT/logs/scion-dev-hub"
 ```
+
+## Direct Cloud Logging
+
+Instead of piping stdout to `gcloud` or running a full OTel pipeline, you can send logs directly to Google Cloud Logging using the built-in client library. This works for both Hub and Runtime Broker servers.
+
+### Setup
+
+1. Authenticate with Application Default Credentials:
+
+    ```bash
+    gcloud auth application-default login
+    ```
+
+2. Set the required environment variables and start the server:
+
+    ```bash
+    export SCION_CLOUD_LOGGING=true
+    export SCION_GCP_PROJECT_ID="your-project-id"
+
+    # Start Hub with direct Cloud Logging
+    scion server start --enable-hub
+
+    # Or start Broker
+    scion server start --enable-runtime-broker
+
+    # Or both
+    scion server start --enable-hub --enable-runtime-broker
+    ```
+
+3. Optionally customize the log name (defaults to `scion`):
+
+    ```bash
+    export SCION_CLOUD_LOGGING_LOG_ID="scion-dev"
+    ```
+
+### How It Works
+
+When `SCION_CLOUD_LOGGING=true`, the server creates a `cloud.google.com/go/logging` client that sends structured log entries to Cloud Logging as a background handler. Logs continue to appear on stdout as normal — Cloud Logging is additive, not a replacement.
+
+The project ID is resolved in this order:
+1. `SCION_GCP_PROJECT_ID` environment variable
+2. `GOOGLE_CLOUD_PROJECT` environment variable
+3. Auto-detected from the environment (e.g., metadata server on GCE/Cloud Run)
+
+### Viewing Logs
+
+Logs appear in **Logging > Logs Explorer** in the GCP Console. Filter by log name:
+
+```
+logName="projects/YOUR_PROJECT/logs/scion"
+```
+
+Or filter by component label:
+
+```
+logName="projects/YOUR_PROJECT/logs/scion"
+labels.component="scion-hub"
+```
+
+### Combining with Other Log Backends
+
+Direct Cloud Logging can be used alongside other logging backends:
+
+```bash
+# Cloud Logging + GCP-formatted stdout + debug level
+SCION_CLOUD_LOGGING=true \
+SCION_GCP_PROJECT_ID="your-project-id" \
+SCION_LOG_GCP=true \
+SCION_LOG_LEVEL=debug \
+scion server start --enable-hub
+```
+
+All three backends (stdout, OTel, Cloud Logging) operate independently and can be enabled simultaneously.
 
 ## OpenTelemetry Export
 
