@@ -525,7 +525,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		// Load settings to get/persist runtime broker identity.
 		// The brokerID should be durable across server restarts, so we store it in settings.
 		var err error
-		brokerSettings, err = config.LoadSettings(globalDir)
+		brokerSettings, err = config.LoadSettings("")
 		if err != nil {
 			log.Printf("Warning: failed to load settings: %v", err)
 			brokerSettings = &config.Settings{}
