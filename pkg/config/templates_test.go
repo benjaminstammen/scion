@@ -438,6 +438,130 @@ func TestLoadConfigInvalidVolumes(t *testing.T) {
 	})
 }
 
+func TestFindTemplateInGrovePath(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "scion-test-grove-path-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Override HOME for global templates
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	// Set CWD to tmpDir so CWD-based resolution won't find any .scion
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	os.Chdir(tmpDir)
+
+	// Create a global template
+	globalTemplatesDir := filepath.Join(tmpDir, GlobalDir, "templates")
+	globalTplDir := filepath.Join(globalTemplatesDir, "my-tpl")
+	if err := os.MkdirAll(globalTplDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a grove with its own template
+	grovePath := filepath.Join(tmpDir, "some-project", DotScion)
+	groveTemplatesDir := filepath.Join(grovePath, "templates")
+	groveTplDir := filepath.Join(groveTemplatesDir, "my-tpl")
+	if err := os.MkdirAll(groveTplDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("grove template found when grovePath is provided", func(t *testing.T) {
+		tpl, err := FindTemplateInGrovePath("my-tpl", grovePath)
+		if err != nil {
+			t.Fatalf("FindTemplateInGrovePath failed: %v", err)
+		}
+		if tpl.Path != groveTplDir {
+			t.Errorf("expected path %q, got %q", groveTplDir, tpl.Path)
+		}
+		if tpl.Scope != "grove" {
+			t.Errorf("expected scope 'grove', got %q", tpl.Scope)
+		}
+	})
+
+	t.Run("falls back to global when grove has no template", func(t *testing.T) {
+		tpl, err := FindTemplateInGrovePath("my-tpl", filepath.Join(tmpDir, "empty-grove"))
+		if err != nil {
+			t.Fatalf("FindTemplateInGrovePath failed: %v", err)
+		}
+		if tpl.Path != globalTplDir {
+			t.Errorf("expected path %q, got %q", globalTplDir, tpl.Path)
+		}
+		if tpl.Scope != "global" {
+			t.Errorf("expected scope 'global', got %q", tpl.Scope)
+		}
+	})
+
+	t.Run("falls back to FindTemplate when grovePath is empty", func(t *testing.T) {
+		// With empty grovePath and CWD having no .scion, should fall back to global
+		tpl, err := FindTemplateInGrovePath("my-tpl", "")
+		if err != nil {
+			t.Fatalf("FindTemplateInGrovePath failed: %v", err)
+		}
+		if tpl.Path != globalTplDir {
+			t.Errorf("expected path %q, got %q", globalTplDir, tpl.Path)
+		}
+	})
+
+	t.Run("returns error when template not found anywhere", func(t *testing.T) {
+		_, err := FindTemplateInGrovePath("nonexistent", grovePath)
+		if err == nil {
+			t.Fatal("expected error for nonexistent template, got nil")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("expected error to contain 'not found', got: %v", err)
+		}
+	})
+
+	t.Run("absolute path bypasses grove resolution", func(t *testing.T) {
+		tpl, err := FindTemplateInGrovePath(globalTplDir, grovePath)
+		if err != nil {
+			t.Fatalf("FindTemplateInGrovePath failed: %v", err)
+		}
+		if tpl.Path != globalTplDir {
+			t.Errorf("expected path %q, got %q", globalTplDir, tpl.Path)
+		}
+	})
+}
+
+func TestGetTemplateChainInGrove(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "scion-test-chain-grove-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	origWd, _ := os.Getwd()
+	defer os.Chdir(origWd)
+	os.Chdir(tmpDir)
+
+	// Create grove template
+	grovePath := filepath.Join(tmpDir, "project", DotScion)
+	groveTplDir := filepath.Join(grovePath, "templates", "test-tpl")
+	if err := os.MkdirAll(groveTplDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	chain, err := GetTemplateChainInGrove("test-tpl", grovePath)
+	if err != nil {
+		t.Fatalf("GetTemplateChainInGrove failed: %v", err)
+	}
+	if len(chain) != 1 {
+		t.Fatalf("expected chain length 1, got %d", len(chain))
+	}
+	if chain[0].Path != groveTplDir {
+		t.Errorf("expected path %q, got %q", groveTplDir, chain[0].Path)
+	}
+}
+
 func TestImageFieldLoadingAndMerging(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "scion-test-image-field")
 	if err != nil {

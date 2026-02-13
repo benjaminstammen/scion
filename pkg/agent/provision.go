@@ -217,7 +217,7 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 	}
 
 	// 2. Load and copy templates
-	chain, err := config.GetTemplateChain(templateName)
+	chain, err := config.GetTemplateChainInGrove(templateName, grovePath)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to load template: %w", err)
 	}
@@ -508,7 +508,7 @@ func GetAgent(ctx context.Context, agentName string, templateName string, agentI
 		return agentDir, agentHome, agentWorkspace, nil, fmt.Errorf("failed to load agent config: %w", err)
 	}
 
-	chain, err := config.GetTemplateChain(effectiveTemplate)
+	chain, err := config.GetTemplateChainInGrove(effectiveTemplate, grovePath)
 	if err != nil {
 		return agentDir, agentHome, agentWorkspace, agentCfg, nil
 	}

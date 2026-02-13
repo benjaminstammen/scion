@@ -232,6 +232,58 @@ func GetTemplateChain(name string) ([]*Template, error) {
 	return chain, nil
 }
 
+// FindTemplateInGrovePath finds a template by name, using a specific grove path
+// for grove-scoped template resolution instead of relying on CWD.
+// When grovePath is empty, it falls back to FindTemplate (CWD-based resolution).
+func FindTemplateInGrovePath(name, grovePath string) (*Template, error) {
+	if grovePath == "" {
+		return FindTemplate(name)
+	}
+
+	// Remote URIs and absolute paths bypass grove resolution
+	if IsRemoteURI(name) {
+		return FindTemplateWithContext(context.Background(), name)
+	}
+	if filepath.IsAbs(name) {
+		if info, err := os.Stat(name); err == nil && info.IsDir() {
+			return &Template{Name: filepath.Base(name), Path: name}, nil
+		}
+		return nil, fmt.Errorf("template path %s not found or not a directory", name)
+	}
+
+	// Check grove-specific templates directory
+	groveTemplatesDir := filepath.Join(grovePath, "templates")
+	path := filepath.Join(groveTemplatesDir, name)
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return &Template{Name: name, Path: path, Scope: "grove"}, nil
+	}
+
+	// Fall back to global templates
+	globalTemplatesDir, err := GetGlobalTemplatesDir()
+	if err == nil {
+		path := filepath.Join(globalTemplatesDir, name)
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return &Template{Name: name, Path: path, Scope: "global"}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("template %s not found", name)
+}
+
+// GetTemplateChainInGrove returns a list of templates in inheritance order,
+// using a specific grove path for template resolution instead of CWD.
+func GetTemplateChainInGrove(name, grovePath string) ([]*Template, error) {
+	var chain []*Template
+
+	tpl, err := FindTemplateInGrovePath(name, grovePath)
+	if err != nil {
+		return nil, err
+	}
+	chain = append(chain, tpl)
+
+	return chain, nil
+}
+
 func CreateTemplate(name string, h api.Harness, global bool) error {
 	var templatesDir string
 	var err error

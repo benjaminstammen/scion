@@ -553,6 +553,55 @@ gemini:
 	}
 }
 
+func TestProvisionAgentUsesGroveTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Move to tmpDir — this is NOT the grove's directory,
+	// simulating a broker process whose CWD doesn't contain .scion.
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldWd)
+
+	// Mock HOME
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create a global template with a different harness value
+	globalScionDir := filepath.Join(tmpDir, ".scion")
+	globalTplDir := filepath.Join(globalScionDir, "templates", "my-tpl")
+	os.MkdirAll(globalTplDir, 0755)
+	os.WriteFile(filepath.Join(globalTplDir, "scion-agent.json"), []byte(`{
+		"harness": "global-harness",
+		"env": {"SOURCE": "global"}
+	}`), 0644)
+
+	// Create a grove with its own version of the same template
+	projectDir := filepath.Join(tmpDir, "project")
+	grovePath := filepath.Join(projectDir, ".scion")
+	groveTplDir := filepath.Join(grovePath, "templates", "my-tpl")
+	os.MkdirAll(groveTplDir, 0755)
+	os.WriteFile(filepath.Join(groveTplDir, "scion-agent.json"), []byte(`{
+		"harness": "grove-harness",
+		"env": {"SOURCE": "grove"}
+	}`), 0644)
+
+	// Provision agent using grovePath — the grove template should be used
+	// even though CWD has no .scion directory.
+	agentName := "grove-tpl-agent"
+	_, _, cfg, err := ProvisionAgent(context.Background(), agentName, "my-tpl", "", grovePath, "", "", "", "")
+	if err != nil {
+		t.Fatalf("ProvisionAgent failed: %v", err)
+	}
+
+	if cfg.Harness != "grove-harness" {
+		t.Errorf("expected harness 'grove-harness' (from grove template), got %q", cfg.Harness)
+	}
+	if cfg.Env["SOURCE"] != "grove" {
+		t.Errorf("expected env[SOURCE] = 'grove', got %q", cfg.Env["SOURCE"])
+	}
+}
+
 func TestProvisionAgentInvalidYAMLTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 
