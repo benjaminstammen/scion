@@ -732,6 +732,51 @@ func TestCreateAgent_FallbackToProvisioningWhenNoBrokerStatus(t *testing.T) {
 		"agent status should fall back to provisioning when broker doesn't report status")
 }
 
+func TestCreateAgent_StartsWithoutTask(t *testing.T) {
+	// When ProvisionOnly is false (scion start), the agent should be started
+	// even if no task is provided — the template may have a built-in prompt.
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "no-task-agent",
+		GroveID: grove.ID,
+		// No Task, no Attach — should still start (not provision-only)
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+
+	// Should be running, not "created" (which would mean provision-only was used)
+	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status,
+		"agent should be started (running) even without a task when ProvisionOnly is false")
+}
+
+func TestCreateAgent_ProvisionOnlyStaysCreated(t *testing.T) {
+	// When ProvisionOnly is true (scion create), the agent should not start.
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:          "provision-only-agent",
+		GroveID:       grove.ID,
+		Task:          "some task",
+		ProvisionOnly: true,
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+
+	assert.Equal(t, store.AgentStatusCreated, resp.Agent.Status,
+		"agent should stay in created status when ProvisionOnly is true")
+}
+
 func TestCreateAgent_RestartFromProvisioningStatus(t *testing.T) {
 	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
 	srv, s, grove := setupCreateAgentServer(t, disp)

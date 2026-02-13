@@ -489,12 +489,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Dispatch to runtime broker if available.
-	// With a task or attach (and not provision-only): full create+start (DispatchAgentCreate).
-	// Otherwise: provision-only (DispatchAgentProvision) — sets up dirs, worktree,
+	// Unless ProvisionOnly is set (scion create), do a full create+start (DispatchAgentCreate).
+	// ProvisionOnly dispatches DispatchAgentProvision — sets up dirs, worktree,
 	// templates without launching the container. Task is written to prompt.md if provided.
 	var warnings []string
 	if dispatcher := s.GetDispatcher(); dispatcher != nil {
-		if (req.Task != "" || req.Attach) && !req.ProvisionOnly {
+		if !req.ProvisionOnly {
 			if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
 				// Log the error but don't fail the request - agent is created in Hub
 				warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
