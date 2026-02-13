@@ -104,6 +104,7 @@ func (m *mockStorage) Copy(_ context.Context, _, _ string) (*storage.Object, err
 // mockDispatcher implements AgentDispatcher for testing bootstrap dispatch.
 type mockDispatcher struct {
 	dispatchedAgents []*store.Agent
+	startedAgents    []*store.Agent
 	returnErr        error
 }
 
@@ -124,8 +125,11 @@ func (d *mockDispatcher) DispatchAgentProvision(_ context.Context, agent *store.
 	agent.Status = store.AgentStatusCreated
 	return nil
 }
-func (d *mockDispatcher) DispatchAgentStart(_ context.Context, _ *store.Agent) error { return nil }
-func (d *mockDispatcher) DispatchAgentStop(_ context.Context, _ *store.Agent) error  { return nil }
+func (d *mockDispatcher) DispatchAgentStart(_ context.Context, agent *store.Agent) error {
+	d.startedAgents = append(d.startedAgents, agent)
+	return nil
+}
+func (d *mockDispatcher) DispatchAgentStop(_ context.Context, _ *store.Agent) error { return nil }
 func (d *mockDispatcher) DispatchAgentRestart(_ context.Context, _ *store.Agent) error {
 	return nil
 }
@@ -400,8 +404,8 @@ func TestCreateAgentWithWorkspaceBootstrap_NoTask(t *testing.T) {
 	srv, s, _, _ := testBootstrapServer(t)
 	groveID, _ := setupGroveAndBroker(t, s)
 
-	// WorkspaceFiles without a task should NOT trigger bootstrap
-	// (but will fail validation since no task and agent doesn't exist)
+	// WorkspaceFiles without a task should NOT trigger bootstrap upload —
+	// instead the agent is provisioned (created status) without starting.
 	body := CreateAgentRequest{
 		Name:    "bootstrap-no-task",
 		GroveID: groveID,
@@ -412,9 +416,23 @@ func TestCreateAgentWithWorkspaceBootstrap_NoTask(t *testing.T) {
 
 	rec := doBootstrapRequest(t, srv, http.MethodPost, "/api/v1/agents", body)
 
-	// Should fail because no task was provided and agent doesn't exist
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Agent should be in created status (provisioned, not started)
+	if resp.Agent.Status != store.AgentStatusCreated {
+		t.Errorf("expected status 'created', got %q", resp.Agent.Status)
+	}
+
+	// No upload URLs since no task was provided
+	if len(resp.UploadURLs) > 0 {
+		t.Error("expected no upload URLs when no task is provided")
 	}
 }
 
@@ -542,6 +560,108 @@ func TestCreateAgentWithoutBootstrap(t *testing.T) {
 	// Agent should be provisioning (dispatched normally)
 	if resp.Agent.Status != store.AgentStatusProvisioning {
 		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Status)
+	}
+}
+
+// ============================================================================
+// Create-then-Start Tests
+// ============================================================================
+
+func TestCreateThenStartWithTask(t *testing.T) {
+	srv, s, _, disp := testBootstrapServer(t)
+	groveID, _ := setupGroveAndBroker(t, s)
+
+	// Step 1: Create the agent (provision-only)
+	createBody := CreateAgentRequest{
+		Name:          "staged-agent",
+		GroveID:       groveID,
+		ProvisionOnly: true,
+	}
+	rec := doBootstrapRequest(t, srv, http.MethodPost, "/api/v1/agents", createBody)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var createResp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+	if createResp.Agent.Status != store.AgentStatusCreated {
+		t.Fatalf("expected status 'created', got %q", createResp.Agent.Status)
+	}
+
+	// Step 2: Start the agent with a task (this previously returned 409)
+	startBody := CreateAgentRequest{
+		Name:    "staged-agent",
+		GroveID: groveID,
+		Task:    "hello world",
+	}
+	rec = doBootstrapRequest(t, srv, http.MethodPost, "/api/v1/agents", startBody)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("start: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var startResp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&startResp); err != nil {
+		t.Fatalf("failed to decode start response: %v", err)
+	}
+
+	// Should return the same agent, now running
+	if startResp.Agent.ID != createResp.Agent.ID {
+		t.Errorf("expected same agent ID %q, got %q", createResp.Agent.ID, startResp.Agent.ID)
+	}
+	if startResp.Agent.Status != store.AgentStatusRunning {
+		t.Errorf("expected status 'running', got %q", startResp.Agent.Status)
+	}
+
+	// Dispatcher should have received a start call
+	if len(disp.startedAgents) != 1 {
+		t.Fatalf("expected 1 started agent, got %d", len(disp.startedAgents))
+	}
+	if disp.startedAgents[0].ID != createResp.Agent.ID {
+		t.Errorf("started wrong agent: expected %q, got %q", createResp.Agent.ID, disp.startedAgents[0].ID)
+	}
+}
+
+func TestCreateThenStartWithoutTask(t *testing.T) {
+	srv, s, _, disp := testBootstrapServer(t)
+	groveID, _ := setupGroveAndBroker(t, s)
+
+	// Step 1: Create the agent with a task (provision-only, task written to prompt.md)
+	createBody := CreateAgentRequest{
+		Name:          "staged-agent-2",
+		GroveID:       groveID,
+		Task:          "saved task",
+		ProvisionOnly: true,
+	}
+	rec := doBootstrapRequest(t, srv, http.MethodPost, "/api/v1/agents", createBody)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Step 2: Start the agent without a task but with attach
+	// (no prompt check needed with attach)
+	startBody := CreateAgentRequest{
+		Name:    "staged-agent-2",
+		GroveID: groveID,
+		Attach:  true,
+	}
+	rec = doBootstrapRequest(t, srv, http.MethodPost, "/api/v1/agents", startBody)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("start: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var startResp CreateAgentResponse
+	if err := json.NewDecoder(rec.Body).Decode(&startResp); err != nil {
+		t.Fatalf("failed to decode start response: %v", err)
+	}
+	if startResp.Agent.Status != store.AgentStatusRunning {
+		t.Errorf("expected status 'running', got %q", startResp.Agent.Status)
+	}
+
+	// Dispatcher should have received a start call
+	if len(disp.startedAgents) != 1 {
+		t.Fatalf("expected 1 started agent, got %d", len(disp.startedAgents))
 	}
 }
 

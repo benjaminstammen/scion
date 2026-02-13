@@ -281,28 +281,28 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If no task is provided, check if the agent already exists.
-	// If it exists and has a prompt.md (or is in "created" status), start it.
-	// If it doesn't exist, allow creation (for "scion create" or "scion start -a" flows).
-	if req.Task == "" {
-		slug := api.Slugify(req.Name)
-		existingAgent, err := s.store.GetAgentBySlug(ctx, req.GroveID, slug)
-		if err != nil && err != store.ErrNotFound {
-			writeErrorFromErr(w, err, "")
+	// Check if the agent already exists (e.g. created via "scion create" for later start).
+	// If it exists in "created" status, start it instead of creating a duplicate.
+	// If it doesn't exist, fall through to create it.
+	slug := api.Slugify(req.Name)
+	existingAgent, err := s.store.GetAgentBySlug(ctx, req.GroveID, slug)
+	if err != nil && err != store.ErrNotFound {
+		writeErrorFromErr(w, err, "")
+		return
+	}
+
+	if existingAgent != nil && existingAgent.Status == store.AgentStatusCreated && !req.ProvisionOnly {
+		// Agent was provisioned but not started — start it now.
+		dispatcher := s.GetDispatcher()
+		if dispatcher == nil || existingAgent.RuntimeBrokerID == "" {
+			writeError(w, http.StatusBadRequest, ErrCodeValidationError,
+				"cannot start agent: no runtime broker available", nil)
 			return
 		}
 
-		if existingAgent != nil {
-			// Agent exists - check if it can be started
-			dispatcher := s.GetDispatcher()
-			if dispatcher == nil || existingAgent.RuntimeBrokerID == "" {
-				writeError(w, http.StatusBadRequest, ErrCodeValidationError,
-					"cannot start agent without a task: no runtime broker available to check prompt", nil)
-				return
-			}
-
-			// Agents in "created" status were provisioned for later start —
-			// they can be started with prompt.md or attach mode.
+		// If a task is provided, the caller has given us what we need.
+		// Otherwise, check for an existing prompt.md or attach mode.
+		if req.Task == "" {
 			hasPrompt, err := dispatcher.DispatchCheckAgentPrompt(ctx, existingAgent)
 			if err != nil {
 				writeError(w, http.StatusBadRequest, ErrCodeValidationError,
@@ -315,29 +315,33 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 					"cannot start agent without a task: prompt.md is empty", nil)
 				return
 			}
+		}
 
-			// Agent exists and has a prompt (or attach requested) - dispatch start action
-			if err := dispatcher.DispatchAgentStart(ctx, existingAgent); err != nil {
-				RuntimeError(w, "Failed to start agent: "+err.Error())
-				return
-			}
+		// Update applied config with the task if provided
+		if req.Task != "" && existingAgent.AppliedConfig != nil {
+			existingAgent.AppliedConfig.Task = req.Task
+			existingAgent.AppliedConfig.Attach = req.Attach
+		}
 
-			// Update agent status
-			existingAgent.Status = store.AgentStatusRunning
-			if err := s.store.UpdateAgent(ctx, existingAgent); err != nil {
-				// Log but continue - agent was started
-				slog.Warn("Failed to update agent status after start", "error", err)
-			}
-
-			// Enrich and return the existing agent
-			s.enrichAgent(ctx, existingAgent, grove, nil)
-			writeJSON(w, http.StatusOK, CreateAgentResponse{
-				Agent: existingAgent,
-			})
+		// Dispatch start action
+		if err := dispatcher.DispatchAgentStart(ctx, existingAgent); err != nil {
+			RuntimeError(w, "Failed to start agent: "+err.Error())
 			return
 		}
-		// Agent doesn't exist - fall through to create it
-		// (supports "scion create" and "scion start -a" flows)
+
+		// Update agent status
+		existingAgent.Status = store.AgentStatusRunning
+		if err := s.store.UpdateAgent(ctx, existingAgent); err != nil {
+			// Log but continue - agent was started
+			slog.Warn("Failed to update agent status after start", "error", err)
+		}
+
+		// Enrich and return the existing agent
+		s.enrichAgent(ctx, existingAgent, grove, nil)
+		writeJSON(w, http.StatusOK, CreateAgentResponse{
+			Agent: existingAgent,
+		})
+		return
 	}
 
 	// Resolve template if specified - the client may pass either a template ID or name
@@ -358,7 +362,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	// Create agent
 	agent := &store.Agent{
 		ID:              api.NewUUID(),
-		Slug:            api.Slugify(req.Name),
+		Slug:            slug,
 		Name:            req.Name,
 		Template:        req.Template,
 		GroveID:         req.GroveID,
