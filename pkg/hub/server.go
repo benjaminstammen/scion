@@ -191,6 +191,9 @@ type RemoteCreateAgentRequest struct {
 	ResolvedSecrets []ResolvedSecret `json:"resolvedSecrets,omitempty"`
 	HubEndpoint string             `json:"hubEndpoint,omitempty"`
 	AgentToken  string             `json:"agentToken,omitempty"`
+	// CreatorName is the human-readable identity of who created this agent.
+	// Injected as the SCION_CREATOR environment variable in the agent container.
+	CreatorName string `json:"creatorName,omitempty"`
 	// Attach indicates the agent should start in interactive attach mode (not detached).
 	Attach bool `json:"attach,omitempty"`
 	// ProvisionOnly indicates the agent should be provisioned (dirs, worktree, templates)

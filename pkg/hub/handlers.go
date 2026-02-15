@@ -246,6 +246,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the caller is an agent (sub-agent creation)
 	var createdBy string
+	var creatorName string
 	if agentIdent := GetAgentIdentityFromContext(ctx); agentIdent != nil {
 		// Agent callers must have the grove:agent:create scope
 		if !agentIdent.HasScope(ScopeAgentCreate) {
@@ -258,8 +259,13 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		createdBy = agentIdent.ID()
+		// Resolve human-readable creator name from the calling agent
+		if creatorAgent, err := s.store.GetAgent(ctx, agentIdent.ID()); err == nil {
+			creatorName = creatorAgent.Name
+		}
 	} else if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
 		createdBy = userIdent.ID()
+		creatorName = userIdent.Email()
 	}
 
 	// Verify grove exists and get its configuration
@@ -392,22 +398,24 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			agent.Detached = true
 		}
 		agent.AppliedConfig = &store.AgentAppliedConfig{
-			Image:     req.Config.Image,
-			Env:       req.Config.Env,
-			Model:     req.Config.Model,
-			Harness:   s.getHarnessFromTemplate(resolvedTemplate, req.Template),
-			Task:      req.Task,
-			Attach:    req.Attach,
-			Workspace: req.Workspace,
+			Image:       req.Config.Image,
+			Env:         req.Config.Env,
+			Model:       req.Config.Model,
+			Harness:     s.getHarnessFromTemplate(resolvedTemplate, req.Template),
+			Task:        req.Task,
+			Attach:      req.Attach,
+			Workspace:   req.Workspace,
+			CreatorName: creatorName,
 		}
 	} else {
 		agent.Detached = true
 		// Store task even when no config override is provided
 		agent.AppliedConfig = &store.AgentAppliedConfig{
-			Harness:   s.getHarnessFromTemplate(resolvedTemplate, req.Template),
-			Task:      req.Task,
-			Attach:    req.Attach,
-			Workspace: req.Workspace,
+			Harness:     s.getHarnessFromTemplate(resolvedTemplate, req.Template),
+			Task:        req.Task,
+			Attach:      req.Attach,
+			Workspace:   req.Workspace,
+			CreatorName: creatorName,
 		}
 	}
 
@@ -1638,6 +1646,19 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 		return
 	}
 
+	// Resolve caller identity for creator tracking
+	var createdBy string
+	var creatorName string
+	if agentIdent := GetAgentIdentityFromContext(ctx); agentIdent != nil {
+		createdBy = agentIdent.ID()
+		if creatorAgent, err := s.store.GetAgent(ctx, agentIdent.ID()); err == nil {
+			creatorName = creatorAgent.Name
+		}
+	} else if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
+		createdBy = userIdent.ID()
+		creatorName = userIdent.Email()
+	}
+
 	// Get grove to access its configuration (including default runtime broker)
 	grove, err := s.store.GetGrove(ctx, groveID)
 	if err != nil {
@@ -1730,6 +1751,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 		Status:          store.AgentStatusPending,
 		Labels:          req.Labels,
 		Visibility:      store.VisibilityPrivate,
+		CreatedBy:       createdBy,
 	}
 
 	if req.Config != nil {
@@ -1740,22 +1762,24 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 			agent.Detached = true
 		}
 		agent.AppliedConfig = &store.AgentAppliedConfig{
-			Image:     req.Config.Image,
-			Env:       req.Config.Env,
-			Model:     req.Config.Model,
-			Harness:   s.getHarnessFromTemplate(resolvedTemplate, req.Template),
-			Task:      req.Task,
-			Attach:    req.Attach,
-			Workspace: req.Workspace,
+			Image:       req.Config.Image,
+			Env:         req.Config.Env,
+			Model:       req.Config.Model,
+			Harness:     s.getHarnessFromTemplate(resolvedTemplate, req.Template),
+			Task:        req.Task,
+			Attach:      req.Attach,
+			Workspace:   req.Workspace,
+			CreatorName: creatorName,
 		}
 	} else {
 		agent.Detached = true
 		// Store task even when no config override is provided
 		agent.AppliedConfig = &store.AgentAppliedConfig{
-			Harness:   s.getHarnessFromTemplate(resolvedTemplate, req.Template),
-			Task:      req.Task,
-			Attach:    req.Attach,
-			Workspace: req.Workspace,
+			Harness:     s.getHarnessFromTemplate(resolvedTemplate, req.Template),
+			Task:        req.Task,
+			Attach:      req.Attach,
+			Workspace:   req.Workspace,
+			CreatorName: creatorName,
 		}
 	}
 

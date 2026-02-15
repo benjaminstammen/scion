@@ -354,6 +354,9 @@ func TestAgentCreateAgent_WithScope(t *testing.T) {
 		require.NotNil(t, resp.Agent)
 		assert.Equal(t, "sub-agent", resp.Agent.Slug)
 		assert.Equal(t, callingAgent.ID, resp.Agent.CreatedBy)
+		// Verify CreatorName is the calling agent's name
+		require.NotNil(t, resp.Agent.AppliedConfig)
+		assert.Equal(t, callingAgent.Name, resp.Agent.AppliedConfig.CreatorName)
 	})
 
 	t.Run("Agent with grove:agent:create scope rejected for different grove", func(t *testing.T) {
@@ -1080,4 +1083,34 @@ func TestAgentCreate_LocalTemplateNoBroker(t *testing.T) {
 
 	// Expect a client error — the broker resolution fails before template resolution
 	assert.True(t, rec.Code >= 400 && rec.Code < 500, "expected client error when no broker assigned, got %d", rec.Code)
+}
+
+func TestCreateAgent_CreatorName_UserEmail(t *testing.T) {
+	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Use dev auth token (which creates a DevUser with email "dev@localhost")
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "user-created-agent",
+		GroveID: grove.ID,
+		Task:    "do something",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+
+	// Verify the agent's AppliedConfig.CreatorName is the user's email
+	require.NotNil(t, resp.Agent.AppliedConfig)
+	assert.Equal(t, "dev@localhost", resp.Agent.AppliedConfig.CreatorName,
+		"CreatorName should be the user's email when a user creates an agent")
+
+	// Also verify it's persisted in the store
+	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
+	require.NoError(t, err)
+	require.NotNil(t, persisted.AppliedConfig)
+	assert.Equal(t, "dev@localhost", persisted.AppliedConfig.CreatorName)
 }

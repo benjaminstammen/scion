@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -204,6 +205,11 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	}
 	if _, ok := opts.Env["SCION_BROKER_NAME"]; !ok {
 		opts.Env["SCION_BROKER_NAME"] = "local"
+	}
+	if _, ok := opts.Env["SCION_CREATOR"]; !ok {
+		if u, err := user.Current(); err == nil {
+			opts.Env["SCION_CREATOR"] = u.Username
+		}
 	}
 
 	agentEnv, envWarnings := buildAgentEnv(finalScionCfg, opts.Env)

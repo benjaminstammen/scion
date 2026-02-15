@@ -723,6 +723,93 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_WithWorkspace(t *testing.T) {
 	}
 }
 
+func TestHTTPAgentDispatcher_DispatchAgentCreate_WithCreatorName(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	// Create a runtime broker
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
+		GroveID:         "grove-1",
+		RuntimeBrokerID: "host-1",
+		AppliedConfig: &store.AgentAppliedConfig{
+			Harness:     "claude",
+			Task:        "do something",
+			CreatorName: "alice@example.com",
+		},
+	}
+
+	err := dispatcher.DispatchAgentCreate(ctx, agent)
+	if err != nil {
+		t.Fatalf("DispatchAgentCreate failed: %v", err)
+	}
+
+	if !mockClient.createCalled {
+		t.Fatal("expected CreateAgent to be called")
+	}
+
+	// Verify CreatorName is propagated to the remote request
+	if mockClient.lastCreateReq.CreatorName != "alice@example.com" {
+		t.Errorf("expected CreatorName 'alice@example.com', got '%s'", mockClient.lastCreateReq.CreatorName)
+	}
+}
+
+func TestHTTPAgentDispatcher_DispatchAgentCreate_WithoutCreatorName(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
+		GroveID:         "grove-1",
+		RuntimeBrokerID: "host-1",
+		AppliedConfig: &store.AgentAppliedConfig{
+			Harness: "claude",
+		},
+	}
+
+	err := dispatcher.DispatchAgentCreate(ctx, agent)
+	if err != nil {
+		t.Fatalf("DispatchAgentCreate failed: %v", err)
+	}
+
+	// Verify CreatorName is empty when not set in AppliedConfig
+	if mockClient.lastCreateReq.CreatorName != "" {
+		t.Errorf("expected empty CreatorName, got '%s'", mockClient.lastCreateReq.CreatorName)
+	}
+}
+
 func TestHTTPAgentDispatcher_DispatchAgentCreate_DoesNotSetProvisionOnly(t *testing.T) {
 	ctx := context.Background()
 	memStore := createTestStore(t)

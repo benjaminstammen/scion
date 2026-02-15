@@ -688,6 +688,56 @@ func TestCreateAgentProvisionOnlyWithWorkspace(t *testing.T) {
 	}
 }
 
+func TestCreateAgentWithCreatorName(t *testing.T) {
+	srv, mgr := newTestServerWithEnvCapture()
+
+	body := `{
+		"name": "creator-agent",
+		"creatorName": "alice@example.com",
+		"config": {"template": "claude"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment variables to be set, got nil")
+	}
+
+	if got := mgr.lastEnv["SCION_CREATOR"]; got != "alice@example.com" {
+		t.Errorf("expected SCION_CREATOR='alice@example.com', got %q", got)
+	}
+}
+
+func TestCreateAgentWithoutCreatorName(t *testing.T) {
+	srv, mgr := newTestServerWithEnvCapture()
+
+	body := `{"name": "no-creator-agent"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment variables to be set, got nil")
+	}
+
+	if _, exists := mgr.lastEnv["SCION_CREATOR"]; exists {
+		t.Error("expected SCION_CREATOR to not be set when no creatorName provided")
+	}
+}
+
 func TestStartAgentEndpoint(t *testing.T) {
 	srv := newTestServer()
 

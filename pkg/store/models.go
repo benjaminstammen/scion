@@ -88,6 +88,11 @@ type AgentAppliedConfig struct {
 	TemplateID   string `json:"templateId,omitempty"`   // Hub template ID for fetching
 	TemplateHash string `json:"templateHash,omitempty"` // Content hash for cache validation
 
+	// CreatorName is the human-readable identity of who created this agent.
+	// For user-created agents, this is the user's email.
+	// For agent-created sub-agents, this is the creating agent's name.
+	CreatorName string `json:"creatorName,omitempty"`
+
 	// Hub access scopes granted to the agent (from template HubAccess config)
 	HubAccessScopes []string `json:"hubAccessScopes,omitempty"`
 

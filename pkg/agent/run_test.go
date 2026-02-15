@@ -17,6 +17,7 @@ package agent
 import (
 	"context"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -189,6 +190,43 @@ func TestBuildAgentEnv(t *testing.T) {
 			t.Errorf("expected key %s to be omitted, but it was present", k)
 		}
 	}
+}
+
+func TestScionCreatorEnvVar(t *testing.T) {
+	t.Run("SCION_CREATOR is set from OS user when not present", func(t *testing.T) {
+		env := make(map[string]string)
+		// Simulate the logic from Start(): if SCION_CREATOR is not set, set it from os/user
+		if _, ok := env["SCION_CREATOR"]; !ok {
+			if u, err := user.Current(); err == nil {
+				env["SCION_CREATOR"] = u.Username
+			}
+		}
+
+		if env["SCION_CREATOR"] == "" {
+			t.Error("expected SCION_CREATOR to be set from OS user")
+		}
+
+		u, _ := user.Current()
+		if env["SCION_CREATOR"] != u.Username {
+			t.Errorf("expected SCION_CREATOR = %q, got %q", u.Username, env["SCION_CREATOR"])
+		}
+	})
+
+	t.Run("SCION_CREATOR is preserved when already set", func(t *testing.T) {
+		env := map[string]string{
+			"SCION_CREATOR": "hub-user@example.com",
+		}
+		// Simulate the logic from Start(): if SCION_CREATOR is not set, set it from os/user
+		if _, ok := env["SCION_CREATOR"]; !ok {
+			if u, err := user.Current(); err == nil {
+				env["SCION_CREATOR"] = u.Username
+			}
+		}
+
+		if env["SCION_CREATOR"] != "hub-user@example.com" {
+			t.Errorf("expected SCION_CREATOR = %q, got %q", "hub-user@example.com", env["SCION_CREATOR"])
+		}
+	})
 }
 
 func TestStartResumeNonExistentAgent(t *testing.T) {

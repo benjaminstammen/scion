@@ -405,6 +405,11 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 		req.Attach = agent.AppliedConfig.Attach
 	}
 
+	// Propagate creator name for SCION_CREATOR env var
+	if agent.AppliedConfig != nil && agent.AppliedConfig.CreatorName != "" {
+		req.CreatorName = agent.AppliedConfig.CreatorName
+	}
+
 	// Pass workspace storage path for GCS bootstrap (non-git workspaces)
 	if agent.AppliedConfig != nil && agent.AppliedConfig.WorkspaceStoragePath != "" {
 		req.WorkspaceStoragePath = agent.AppliedConfig.WorkspaceStoragePath
