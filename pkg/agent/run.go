@@ -48,6 +48,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 						if opts.Detached != nil {
 							a.Detached = *opts.Detached
 						}
+						a.Status = "running"
 						return &a, nil
 					}
 				}
@@ -346,6 +347,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 			if a.ContainerID == id || a.Name == opts.Name {
 				a.Detached = detached
 				a.Warnings = warnings
+				a.Status = status
 				return &a, nil
 			}
 		}

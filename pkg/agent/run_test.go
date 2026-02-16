@@ -341,3 +341,36 @@ func TestStartDurationTimer(t *testing.T) {
 		}
 	})
 }
+
+func TestStartReturnsRunningStatus(t *testing.T) {
+	// This tests the early-return path when a container is already running.
+	// The runtime's List() may return a stale Status (e.g. "created") from the
+	// container runtime, but Start() should override it to "running" since
+	// isRunning is confirmed true via ContainerStatus.
+	mockRT := &runtime.MockRuntime{
+		ListFunc: func(ctx context.Context, labelFilter map[string]string) ([]api.AgentInfo, error) {
+			return []api.AgentInfo{
+				{
+					ContainerID:     "abc123",
+					Name:            "test-agent",
+					ContainerStatus: "Up 2 hours",
+					Status:          "created", // stale status from runtime
+				},
+			}, nil
+		},
+	}
+
+	mgr := NewManager(mockRT)
+
+	result, err := mgr.Start(context.Background(), api.StartOptions{
+		Name: "test-agent",
+		// No Task — triggers the early return for already-running containers
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Status != "running" {
+		t.Errorf("expected Status = %q, got %q", "running", result.Status)
+	}
+}
