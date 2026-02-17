@@ -19,6 +19,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -773,4 +775,109 @@ func TestStartAgentEndpoint(t *testing.T) {
 	if resp.Created {
 		t.Error("expected Created to be false for start operation")
 	}
+}
+
+// TestCreateAgentHubEndpointFromGroveSettings tests that hub endpoint is resolved
+// from the grove's settings.yaml when grovePath is provided.
+func TestCreateAgentHubEndpointFromGroveSettings(t *testing.T) {
+	t.Run("grove settings override request hub endpoint", func(t *testing.T) {
+		srv, mgr := newTestServerWithEnvCapture()
+
+		// Create a grove directory with settings.yaml containing hub.endpoint
+		groveDir := filepath.Join(t.TempDir(), ".scion")
+		if err := os.MkdirAll(groveDir, 0755); err != nil {
+			t.Fatalf("failed to create grove dir: %v", err)
+		}
+		settingsContent := `hub:
+  endpoint: "https://scionhub.loophole.site"
+`
+		if err := os.WriteFile(filepath.Join(groveDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
+			t.Fatalf("failed to write settings: %v", err)
+		}
+
+		body := `{
+			"name": "grove-endpoint-agent",
+			"hubEndpoint": "http://localhost:9810",
+			"grovePath": "` + groveDir + `",
+			"config": {"template": "claude"}
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.Handler().ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+		}
+
+		if mgr.lastEnv == nil {
+			t.Fatal("expected environment variables to be set")
+		}
+
+		// Grove settings hub.endpoint should override the request's localhost value
+		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://scionhub.loophole.site" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='https://scionhub.loophole.site' from grove settings, got %q", got)
+		}
+		if got := mgr.lastEnv["SCION_HUB_URL"]; got != "https://scionhub.loophole.site" {
+			t.Errorf("expected SCION_HUB_URL='https://scionhub.loophole.site' from grove settings, got %q", got)
+		}
+	})
+
+	t.Run("grove settings used when request hub endpoint empty", func(t *testing.T) {
+		srv, mgr := newTestServerWithEnvCapture()
+
+		groveDir := filepath.Join(t.TempDir(), ".scion")
+		if err := os.MkdirAll(groveDir, 0755); err != nil {
+			t.Fatalf("failed to create grove dir: %v", err)
+		}
+		settingsContent := `hub:
+  endpoint: "https://hub.example.com"
+`
+		if err := os.WriteFile(filepath.Join(groveDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
+			t.Fatalf("failed to write settings: %v", err)
+		}
+
+		body := `{
+			"name": "grove-fallback-agent",
+			"grovePath": "` + groveDir + `",
+			"config": {"template": "claude"}
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.Handler().ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+		}
+
+		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://hub.example.com" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.example.com' from grove settings, got %q", got)
+		}
+	})
+
+	t.Run("no grove path falls back to request endpoint", func(t *testing.T) {
+		srv, mgr := newTestServerWithEnvCapture()
+
+		body := `{
+			"name": "no-grove-agent",
+			"hubEndpoint": "https://hub.direct.com",
+			"config": {"template": "claude"}
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.Handler().ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+		}
+
+		if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://hub.direct.com" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.direct.com' from request, got %q", got)
+		}
+	})
 }

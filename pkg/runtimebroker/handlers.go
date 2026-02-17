@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/gcp"
 	"github.com/ptone/scion-agent/pkg/templatecache"
 )
@@ -241,12 +242,29 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			slog.Debug("SCION_HUB_TOKEN set", "length", len(req.AgentToken))
 		}
 	}
-	// Set Hub URL: prefer request's HubEndpoint, fall back to server's configured HubEndpoint
+	// Set Hub URL with priority:
+	// 1. Grove settings hub.endpoint (most specific: user's project-level config)
+	// 2. Request's HubEndpoint (from Hub dispatcher's server config)
+	// 3. Broker's configured HubEndpoint (server-level fallback)
 	hubEndpoint := req.HubEndpoint
 	if hubEndpoint == "" && s.config.HubEndpoint != "" {
 		hubEndpoint = s.config.HubEndpoint
 		if s.config.Debug {
 			slog.Debug("Using server Hub endpoint as fallback", "endpoint", hubEndpoint)
+		}
+	}
+	// Override with grove settings if available. The grove's hub.endpoint reflects
+	// the externally-accessible Hub URL (e.g. a tunnel/DNS endpoint) that agents
+	// inside containers need to reach the Hub. This takes precedence because the
+	// Hub's own server config may only know its localhost address.
+	if req.GrovePath != "" {
+		if groveSettings, err := config.LoadSettings(req.GrovePath); err == nil {
+			if ep := groveSettings.GetHubEndpoint(); ep != "" {
+				hubEndpoint = ep
+				if s.config.Debug {
+					slog.Debug("Hub endpoint resolved from grove settings", "endpoint", ep, "grovePath", req.GrovePath)
+				}
+			}
 		}
 	}
 	if hubEndpoint != "" {
