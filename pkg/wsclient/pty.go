@@ -169,6 +169,15 @@ func (c *PTYClient) Run() error {
 		c.restoreTerminal()
 	}()
 
+	// Send initial resize so the remote PTY matches our terminal size,
+	// even if the server didn't use the query-param hints.
+	if term.IsTerminal(c.oldFd) {
+		if cols, rows, err := term.GetSize(c.oldFd); err == nil {
+			msg := wsprotocol.NewPTYResizeMessage(cols, rows)
+			c.writeToWebSocket(msg)
+		}
+	}
+
 	// Set up signal handler for resize
 	go c.handleResize()
 
