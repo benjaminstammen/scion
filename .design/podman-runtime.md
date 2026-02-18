@@ -70,9 +70,9 @@ Scion's existing UID/GID synchronization mechanism in `sciontool init` (`cmd/sci
 - Bind-mounted files appear owned by the mapped UID. By default, the host user's UID maps to root (UID 0) inside the container.
 - The `--userns=keep-id` flag can map the host user's UID to the same UID inside the container instead of to root, but this conflicts with Scion's "start as root, then drop privileges" model.
 
-**Recommended approach**: For rootless Podman, use the default user namespace mapping (host UID → container UID 0) and let `sciontool init` handle the remapping as it does today. The `SCION_HOST_UID`/`SCION_HOST_GID` values passed will be the host user's actual UID/GID. Since `usermod`/`groupmod` modify the in-container user database (which is writable in the overlay), this works even in a user namespace. The bind-mounted files will be accessible because rootless Podman maps the host user to container root, and `sciontool init` runs as that mapped root.
+**Decision**: Use the default user namespace mapping (host UID → container UID 0) and let `sciontool init` handle the remapping as it does today. The `SCION_HOST_UID`/`SCION_HOST_GID` values passed will be the host user's actual UID/GID. Since `usermod`/`groupmod` modify the in-container user database (which is writable in the overlay), this works even in a user namespace. The bind-mounted files will be accessible because rootless Podman maps the host user to container root, and `sciontool init` runs as that mapped root. Do **not** use `--userns=keep-id`.
 
-> **Open Question**: Should `PodmanRuntime` detect rootless mode (via `podman info`) and log a diagnostic message or warning if an unusual configuration is detected? This could help users troubleshoot permission issues without adding runtime complexity.
+**Decision**: `PodmanRuntime` should detect rootless mode (via `podman info`) and log the mode at **debug** level. This aids troubleshooting without adding noise at normal log levels.
 
 #### Podman Machine (macOS/Windows)
 On macOS and Windows, Podman runs inside a Linux virtual machine managed by `podman machine`. The `podman` CLI communicates with the VM.
@@ -82,7 +82,7 @@ Key considerations:
 - **`GetWorkspacePath()`**: Returns the host path to the workspace. Since Scion worktrees are created relative to the project directory (typically under `$HOME`), they should be within the default VM mount. However, this should be validated.
 - **Socket path**: On macOS, the Podman socket is typically at `$XDG_RUNTIME_DIR/podman/podman.sock` or managed by `podman machine`. The `Host` field on `PodmanRuntime` can point to a custom socket if needed.
 
-> **Open Question**: Should Scion validate that the workspace path is within a Podman Machine-accessible mount on macOS, and provide a clear error if not?
+**Decision**: Validate that the workspace path is within the user's home directory on macOS when using Podman Machine. Since Podman Machine exposes `$HOME` via virtiofs by default, this covers the common case. If the workspace is outside `$HOME`, emit a clear error explaining the limitation and suggesting the user configure additional Podman Machine mounts.
 
 ### 4. Integration Plan
 
@@ -101,12 +101,12 @@ case "podman":
 Also add "podman" to the known-type fallback check (the condition around line 48 that recognizes bare type names like "docker", "kubernetes", etc.).
 
 #### Auto-Detection
-Update the "auto"/"local" detection logic in `GetRuntime()`. On Linux, if `podman` is found on `$PATH` but `docker` is not, prefer Podman. If both are available, prefer Docker for backward compatibility (or make this configurable).
+The runtime should be specified explicitly in the user's profile configuration. However, during `scion init` bootstrapping (when writing the initial `settings.yaml`), auto-detection determines the default:
 
-> **Open Question**: When both `docker` and `podman` are available, which should "auto" prefer? Docker is the safer default for backward compatibility, but on RHEL/Fedora systems where Podman is the native tool, users may expect Podman. Options:
-> 1. Always prefer Docker when available (simplest, most compatible).
-> 2. Prefer Podman on systems where it is the native package manager default.
-> 3. Require explicit configuration; never auto-select Podman.
+- **macOS**: Prefer `container` (Apple Virtualization), fall back to `docker`, then `podman`.
+- **Linux**: If both `docker` and `podman` are on `$PATH`, **prefer `podman`**. If only one is available, use it.
+
+This auto-detection only runs at bootstrap time. After that, the profile's `runtime` field is authoritative.
 
 #### Default Settings
 Add a `podman` entry to the embedded default settings at `pkg/config/embeds/default_settings.yaml` for discoverability:
@@ -161,11 +161,7 @@ Add `"podman"` to any runtime type enumerations or documentation in `pkg/api/typ
 
 Given that most methods are identical to Docker, consider one of these approaches:
 
-**Option A: Independent implementation** — Copy the `DockerRuntime` structure, change the command to "podman", and implement `List()` differently. Simple, no coupling, easy to diverge later.
-
-**Option B: Embedded struct with override** — Create a shared base or embed `DockerRuntime` in `PodmanRuntime`, overriding only `List()` and `Name()`. Reduces duplication but creates coupling.
-
-> **Open Question**: Which approach is preferred? Option A is recommended given the project's alpha status — the duplication is minimal (most logic is in `buildCommonRunArgs()` already) and avoids premature abstraction.
+**Decision: Independent implementation.** Duplicate the `DockerRuntime` structure in `PodmanRuntime`, changing the command to "podman" and implementing `List()` with the Podman-specific JSON parser. This provides clean separation and allows the two implementations to drift independently as Podman and Docker diverge over time. The duplication is minimal since most shared logic already lives in `buildCommonRunArgs()`.
 
 ## Testing Strategy
 
@@ -188,10 +184,17 @@ Create `pkg/runtime/podman_test.go` with:
 ### CI Considerations
 If CI runs in a container or restricted environment, rootless Podman may not be available (requires `newuidmap`/`newgidmap` and `/etc/subuid`/`/etc/subgid` configuration). Tests may need to be conditional or run in a dedicated environment.
 
-## Open Questions Summary
+## Decisions Summary
 
-1. **Auto-detection priority**: When both Docker and Podman are on `$PATH`, which should "auto" select? (Recommendation: Docker for backward compatibility.)
-2. **Rootless diagnostics**: Should `PodmanRuntime` detect rootless mode and surface diagnostic info for troubleshooting?
-3. **Podman Machine mount validation**: Should Scion check that workspace paths are within Podman Machine's virtiofs mounts on macOS?
-4. **Code structure**: Independent implementation vs. shared base with Docker? (Recommendation: Independent, per Option A.)
-5. **`podman compose` / pods**: Should the design account for future multi-container agent scenarios using Podman pods? (Not needed now, but worth noting for extensibility.)
+| # | Topic | Decision |
+|---|---|---|
+| 1 | **Auto-detection priority** | Specified in profile. At bootstrap, prefer Podman over Docker on Linux when both are available. |
+| 2 | **Rootless diagnostics** | Detect rootless mode via `podman info` and log at debug level. |
+| 3 | **Podman Machine mount validation** | Validate workspace is within `$HOME` on macOS; error with guidance if not. |
+| 4 | **Code structure** | Independent implementation (duplicate from Docker) for clean separation. |
+| 5 | **Rootless UID/GID strategy** | Use default user namespace mapping; let `sciontool init` handle remapping. No `--userns=keep-id`. |
+
+## Remaining Open Questions
+
+1. **Image registry compatibility**: Podman defaults to searching multiple registries (e.g., `docker.io`, `quay.io`) unless a fully-qualified image name is provided. Should `PodmanRuntime` enforce fully-qualified image names, or rely on the user's `registries.conf`?
+2. **Podman version floor**: What minimum Podman version should Scion support? Podman 4.x+ is recommended for stable rootless and machine support. Older versions have significant behavioral differences.
