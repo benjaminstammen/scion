@@ -31,6 +31,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/credentials"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/hubsync"
+	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/transfer"
 	"github.com/ptone/scion-agent/pkg/util"
 	"github.com/ptone/scion-agent/pkg/wsclient"
@@ -337,6 +338,17 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 
 	if !info.Detached {
 		fmt.Printf("Attaching to agent '%s'...\n", agentName)
+
+		// Wait for the container to be ready before attaching.
+		// After container start, sciontool init needs time to set up the user,
+		// run pre-start hooks, and launch the child process. For tmux containers,
+		// the tmux session must exist before we can attach.
+		if info.Labels["scion.tmux"] == "true" {
+			if err := waitForTmuxSession(rt, agentName); err != nil {
+				return err
+			}
+		}
+
 		return rt.Attach(context.Background(), agentName)
 	}
 
@@ -362,6 +374,31 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 	fmt.Printf("Agent '%s' %s successfully (ID: %s)\n", agentName, displayStatus, info.ID)
 
 	return nil
+}
+
+// waitForTmuxSession polls the container until the tmux session "scion" is
+// available. After starting a container, sciontool init needs time to
+// synchronize UID/GID, run pre-start hooks, and launch the tmux session.
+// Without this wait, an immediate attach would fail with "no sessions".
+func waitForTmuxSession(rt runtime.Runtime, agentName string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for tmux session in agent '%s' to become ready", agentName)
+		case <-ticker.C:
+			_, err := rt.Exec(ctx, agentName, []string{"tmux", "has-session", "-t", "scion"})
+			if err == nil {
+				return nil
+			}
+			util.Debugf("waiting for tmux session in '%s': %v", agentName, err)
+		}
+	}
 }
 
 func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) error {
