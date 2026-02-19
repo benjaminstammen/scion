@@ -180,12 +180,10 @@ func processHookData(data []byte) error {
 	loggingHandler := handlers.NewLoggingHandler()
 	promptHandler := handlers.NewPromptHandler()
 	hubHandler := handlers.NewHubHandler()
-	cleanupHandler := handlers.NewCleanupHandler()
 
 	processor.AddHandler(statusHandler.Handle)
 	processor.AddHandler(loggingHandler.Handle)
 	processor.AddHandler(promptHandler.Handle)
-	processor.AddHandler(cleanupHandler.Handle)
 
 	// Add Hub handler if configured
 	if hubHandler != nil {

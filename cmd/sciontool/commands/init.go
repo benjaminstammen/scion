@@ -134,10 +134,13 @@ func runInit(args []string) int {
 	statusHandler := handlers.NewStatusHandler()
 	loggingHandler := handlers.NewLoggingHandler()
 
+	cleanupHandler := handlers.NewCleanupHandler()
+
 	for _, eventName := range []string{hooks.EventPreStart, hooks.EventPostStart, hooks.EventPreStop, hooks.EventSessionEnd} {
 		lifecycleManager.RegisterHandler(eventName, statusHandler.Handle)
 		lifecycleManager.RegisterHandler(eventName, loggingHandler.Handle)
 	}
+	lifecycleManager.RegisterHandler(hooks.EventSessionEnd, cleanupHandler.Handle)
 
 	// Create telemetry handler for hook-to-span conversion
 	// Note: The hook command is invoked separately by harnesses, so telemetry

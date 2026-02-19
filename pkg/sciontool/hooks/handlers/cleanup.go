@@ -34,14 +34,12 @@ func (h *CleanupHandler) Handle(event *hooks.Event) error {
 		return nil
 	}
 
-	if event.Dialect == "claude" {
-		h.cleanupClaudeDebug()
-	}
+	h.cleanupClaudeDebug()
 
 	return nil
 }
 
-// cleanupClaudeDebug removes the .claude/debug directory.
+// cleanupClaudeDebug removes the .claude/debug directory if it exists.
 // Claude Code creates symlinks in this directory that point to
 // container-internal paths (e.g., /home/scion/.claude/debug/xxx.txt).
 // When the worktree is deleted on the host, these dangling symlinks
@@ -49,6 +47,11 @@ func (h *CleanupHandler) Handle(event *hooks.Event) error {
 // Removing them from inside the container avoids this entirely.
 func (h *CleanupHandler) cleanupClaudeDebug() {
 	debugDir := filepath.Join(h.Home, ".claude", "debug")
+	if _, err := os.Stat(debugDir); os.IsNotExist(err) {
+		log.Debug("Claude debug dir %s does not exist, skipping cleanup", debugDir)
+		return
+	}
+	log.Debug("Removing Claude debug dir %s", debugDir)
 	if err := os.RemoveAll(debugDir); err != nil {
 		log.Error("Failed to clean up %s: %v", debugDir, err)
 	}
