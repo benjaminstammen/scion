@@ -19,12 +19,8 @@ type CleanupHandler struct {
 	Home string
 }
 
-// NewCleanupHandler creates a new cleanup handler using $HOME.
-func NewCleanupHandler() *CleanupHandler {
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = "/home/scion"
-	}
+// NewCleanupHandler creates a new cleanup handler for the given home directory.
+func NewCleanupHandler(home string) *CleanupHandler {
 	return &CleanupHandler{Home: home}
 }
 

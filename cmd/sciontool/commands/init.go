@@ -134,13 +134,10 @@ func runInit(args []string) int {
 	statusHandler := handlers.NewStatusHandler()
 	loggingHandler := handlers.NewLoggingHandler()
 
-	cleanupHandler := handlers.NewCleanupHandler()
-
 	for _, eventName := range []string{hooks.EventPreStart, hooks.EventPostStart, hooks.EventPreStop, hooks.EventSessionEnd} {
 		lifecycleManager.RegisterHandler(eventName, statusHandler.Handle)
 		lifecycleManager.RegisterHandler(eventName, loggingHandler.Handle)
 	}
-	lifecycleManager.RegisterHandler(hooks.EventSessionEnd, cleanupHandler.Handle)
 
 	// Create telemetry handler for hook-to-span conversion
 	// Note: The hook command is invoked separately by harnesses, so telemetry
@@ -206,6 +203,9 @@ func runInit(args []string) int {
 			log.Debug("Could not look up user for UID %d: %v", targetUID, err)
 		}
 	}
+	// Register cleanup handler with the resolved agent home directory
+	lifecycleManager.RegisterHandler(hooks.EventSessionEnd, handlers.NewCleanupHandler(agentHome).Handle)
+
 	servicesPath := filepath.Join(agentHome, ".scion", "scion-services.yaml")
 	log.Debug("Looking for services config at: %s", servicesPath)
 	if data, err := os.ReadFile(servicesPath); err == nil {
