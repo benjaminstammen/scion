@@ -40,14 +40,8 @@ func (b *LocalBackend) Get(ctx context.Context, name, scope, scopeID string) (*S
 	return fromStoreSecretWithValue(s), nil
 }
 
-func (b *LocalBackend) Set(ctx context.Context, input *SetSecretInput) (bool, *SecretMeta, error) {
-	secret := toStoreSecret(input)
-	created, err := b.store.UpsertSecret(ctx, secret)
-	if err != nil {
-		return false, nil, err
-	}
-	meta := fromStoreSecretMeta(secret)
-	return created, meta, nil
+func (b *LocalBackend) Set(_ context.Context, _ *SetSecretInput) (bool, *SecretMeta, error) {
+	return false, nil, ErrNoSecretBackend
 }
 
 func (b *LocalBackend) Delete(ctx context.Context, name, scope, scopeID string) error {

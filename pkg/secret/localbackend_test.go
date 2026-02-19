@@ -18,13 +18,14 @@ package secret
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
 )
 
-func createTestBackend(t *testing.T) SecretBackend {
+func createTestStore(t *testing.T) store.SecretStore {
 	t.Helper()
 	s, err := sqlite.New(":memory:")
 	if err != nil {
@@ -33,38 +34,59 @@ func createTestBackend(t *testing.T) SecretBackend {
 	if err := s.Migrate(context.Background()); err != nil {
 		t.Fatalf("failed to migrate test store: %v", err)
 	}
-	return NewLocalBackend(s)
+	return s
 }
 
-func TestLocalBackend_SetAndGet(t *testing.T) {
-	backend := createTestBackend(t)
+func createTestBackend(t *testing.T) (*LocalBackend, store.SecretStore) {
+	t.Helper()
+	s := createTestStore(t)
+	return NewLocalBackend(s), s
+}
+
+// seedSecret inserts a secret directly into the store for testing read operations.
+func seedSecret(t *testing.T, s store.SecretStore, sec *store.Secret) {
+	t.Helper()
+	if err := s.CreateSecret(context.Background(), sec); err != nil {
+		t.Fatalf("failed to seed secret %s: %v", sec.Key, err)
+	}
+}
+
+func TestLocalBackend_SetRejectsPlaintext(t *testing.T) {
+	backend, _ := createTestBackend(t)
 	ctx := context.Background()
 
 	input := &SetSecretInput{
-		Name:        "API_KEY",
-		Value:       "sk-test-123",
-		SecretType:  TypeEnvironment,
-		Target:      "API_KEY",
-		Scope:       ScopeUser,
-		ScopeID:     "user-1",
-		Description: "Test API key",
+		Name:       "API_KEY",
+		Value:      "sk-test-123",
+		SecretType: TypeEnvironment,
+		Scope:      ScopeUser,
+		ScopeID:    "user-1",
 	}
 
-	created, meta, err := backend.Set(ctx, input)
-	if err != nil {
-		t.Fatalf("Set failed: %v", err)
+	_, _, err := backend.Set(ctx, input)
+	if err == nil {
+		t.Fatal("expected Set to return error on local backend")
 	}
-	if !created {
-		t.Error("expected created=true for new secret")
+	if !errors.Is(err, ErrNoSecretBackend) {
+		t.Errorf("expected ErrNoSecretBackend, got %v", err)
 	}
-	if meta.Name != "API_KEY" {
-		t.Errorf("expected name %q, got %q", "API_KEY", meta.Name)
-	}
-	if meta.Version != 1 {
-		t.Errorf("expected version 1, got %d", meta.Version)
-	}
+}
 
-	// Get it back with value
+func TestLocalBackend_Get(t *testing.T) {
+	backend, s := createTestBackend(t)
+	ctx := context.Background()
+
+	seedSecret(t, s, &store.Secret{
+		ID:             "s1",
+		Key:            "API_KEY",
+		EncryptedValue: "sk-test-123",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "API_KEY",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
+		Description:    "Test API key",
+	})
+
 	sv, err := backend.Get(ctx, "API_KEY", ScopeUser, "user-1")
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
@@ -77,74 +99,32 @@ func TestLocalBackend_SetAndGet(t *testing.T) {
 	}
 }
 
-func TestLocalBackend_SetUpdate(t *testing.T) {
-	backend := createTestBackend(t)
-	ctx := context.Background()
-
-	input := &SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "old-value",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
-	}
-
-	_, _, err := backend.Set(ctx, input)
-	if err != nil {
-		t.Fatalf("Set failed: %v", err)
-	}
-
-	// Update
-	input.Value = "new-value"
-	created, meta, err := backend.Set(ctx, input)
-	if err != nil {
-		t.Fatalf("Set update failed: %v", err)
-	}
-	if created {
-		t.Error("expected created=false for update")
-	}
-	if meta.Version != 2 {
-		t.Errorf("expected version 2, got %d", meta.Version)
-	}
-
-	sv, err := backend.Get(ctx, "API_KEY", ScopeUser, "user-1")
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if sv.Value != "new-value" {
-		t.Errorf("expected value %q, got %q", "new-value", sv.Value)
-	}
-}
-
 func TestLocalBackend_Delete(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, s := createTestBackend(t)
 	ctx := context.Background()
 
-	input := &SetSecretInput{
-		Name:       "TO_DELETE",
-		Value:      "value",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
-	}
-
-	_, _, err := backend.Set(ctx, input)
-	if err != nil {
-		t.Fatalf("Set failed: %v", err)
-	}
+	seedSecret(t, s, &store.Secret{
+		ID:             "s1",
+		Key:            "TO_DELETE",
+		EncryptedValue: "value",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "TO_DELETE",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
+	})
 
 	if err := backend.Delete(ctx, "TO_DELETE", ScopeUser, "user-1"); err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
 
-	_, err = backend.Get(ctx, "TO_DELETE", ScopeUser, "user-1")
+	_, err := backend.Get(ctx, "TO_DELETE", ScopeUser, "user-1")
 	if err != store.ErrNotFound {
 		t.Errorf("expected ErrNotFound after delete, got %v", err)
 	}
 }
 
 func TestLocalBackend_DeleteNotFound(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, _ := createTestBackend(t)
 	ctx := context.Background()
 
 	err := backend.Delete(ctx, "NONEXISTENT", ScopeUser, "user-1")
@@ -154,20 +134,19 @@ func TestLocalBackend_DeleteNotFound(t *testing.T) {
 }
 
 func TestLocalBackend_List(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, s := createTestBackend(t)
 	ctx := context.Background()
 
-	for _, name := range []string{"A_KEY", "B_KEY", "C_KEY"} {
-		_, _, err := backend.Set(ctx, &SetSecretInput{
-			Name:       name,
-			Value:      "val-" + name,
-			SecretType: TypeEnvironment,
-			Scope:      ScopeUser,
-			ScopeID:    "user-1",
+	for i, name := range []string{"A_KEY", "B_KEY", "C_KEY"} {
+		seedSecret(t, s, &store.Secret{
+			ID:             "s" + string(rune('1'+i)),
+			Key:            name,
+			EncryptedValue: "val-" + name,
+			SecretType:     store.SecretTypeEnvironment,
+			Target:         name,
+			Scope:          store.ScopeUser,
+			ScopeID:        "user-1",
 		})
-		if err != nil {
-			t.Fatalf("Set %s failed: %v", name, err)
-		}
 	}
 
 	metas, err := backend.List(ctx, Filter{Scope: ScopeUser, ScopeID: "user-1"})
@@ -180,23 +159,26 @@ func TestLocalBackend_List(t *testing.T) {
 }
 
 func TestLocalBackend_ListFilterByType(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, s := createTestBackend(t)
 	ctx := context.Background()
 
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "ENV_KEY",
-		Value:      "val",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s1",
+		Key:            "ENV_KEY",
+		EncryptedValue: "val",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "ENV_KEY",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
 	})
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "FILE_KEY",
-		Value:      "data",
-		SecretType: TypeFile,
-		Target:     "/tmp/file",
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s2",
+		Key:            "FILE_KEY",
+		EncryptedValue: "data",
+		SecretType:     store.SecretTypeFile,
+		Target:         "/tmp/file",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
 	})
 
 	metas, err := backend.List(ctx, Filter{Scope: ScopeUser, ScopeID: "user-1", Type: TypeFile})
@@ -212,20 +194,18 @@ func TestLocalBackend_ListFilterByType(t *testing.T) {
 }
 
 func TestLocalBackend_GetMeta(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, s := createTestBackend(t)
 	ctx := context.Background()
 
-	_, _, err := backend.Set(ctx, &SetSecretInput{
-		Name:       "META_KEY",
-		Value:      "secret-value",
-		SecretType: TypeVariable,
-		Target:     "config",
-		Scope:      ScopeGrove,
-		ScopeID:    "grove-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s1",
+		Key:            "META_KEY",
+		EncryptedValue: "secret-value",
+		SecretType:     store.SecretTypeVariable,
+		Target:         "config",
+		Scope:          store.ScopeGrove,
+		ScopeID:        "grove-1",
 	})
-	if err != nil {
-		t.Fatalf("Set failed: %v", err)
-	}
 
 	meta, err := backend.GetMeta(ctx, "META_KEY", ScopeGrove, "grove-1")
 	if err != nil {
@@ -240,41 +220,47 @@ func TestLocalBackend_GetMeta(t *testing.T) {
 }
 
 func TestLocalBackend_Resolve(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, s := createTestBackend(t)
 	ctx := context.Background()
 
 	// User-level secrets
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "user-api-key",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s1",
+		Key:            "API_KEY",
+		EncryptedValue: "user-api-key",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "API_KEY",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
 	})
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "TLS_CERT",
-		Value:      "cert-data",
-		SecretType: TypeFile,
-		Target:     "/etc/ssl/cert.pem",
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s2",
+		Key:            "TLS_CERT",
+		EncryptedValue: "cert-data",
+		SecretType:     store.SecretTypeFile,
+		Target:         "/etc/ssl/cert.pem",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
 	})
 
 	// Grove-level override
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "grove-api-key",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeGrove,
-		ScopeID:    "grove-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s3",
+		Key:            "API_KEY",
+		EncryptedValue: "grove-api-key",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "API_KEY",
+		Scope:          store.ScopeGrove,
+		ScopeID:        "grove-1",
 	})
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "DB_PASS",
-		Value:      "grove-db-pass",
-		SecretType: TypeEnvironment,
-		Target:     "DATABASE_PASSWORD",
-		Scope:      ScopeGrove,
-		ScopeID:    "grove-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s4",
+		Key:            "DB_PASS",
+		EncryptedValue: "grove-db-pass",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "DATABASE_PASSWORD",
+		Scope:          store.ScopeGrove,
+		ScopeID:        "grove-1",
 	})
 
 	resolved, err := backend.Resolve(ctx, "user-1", "grove-1", "")
@@ -326,7 +312,7 @@ func TestLocalBackend_Resolve(t *testing.T) {
 }
 
 func TestLocalBackend_ResolveNoScopes(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, _ := createTestBackend(t)
 	ctx := context.Background()
 
 	resolved, err := backend.Resolve(ctx, "", "", "")
@@ -339,22 +325,26 @@ func TestLocalBackend_ResolveNoScopes(t *testing.T) {
 }
 
 func TestLocalBackend_ResolveBrokerOverride(t *testing.T) {
-	backend := createTestBackend(t)
+	backend, s := createTestBackend(t)
 	ctx := context.Background()
 
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "user-key",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeUser,
-		ScopeID:    "user-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s1",
+		Key:            "API_KEY",
+		EncryptedValue: "user-key",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "API_KEY",
+		Scope:          store.ScopeUser,
+		ScopeID:        "user-1",
 	})
-	_, _, _ = backend.Set(ctx, &SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "broker-key",
-		SecretType: TypeEnvironment,
-		Scope:      ScopeRuntimeBroker,
-		ScopeID:    "broker-1",
+	seedSecret(t, s, &store.Secret{
+		ID:             "s2",
+		Key:            "API_KEY",
+		EncryptedValue: "broker-key",
+		SecretType:     store.SecretTypeEnvironment,
+		Target:         "API_KEY",
+		Scope:          store.ScopeRuntimeBroker,
+		ScopeID:        "broker-1",
 	})
 
 	resolved, err := backend.Resolve(ctx, "user-1", "", "broker-1")

@@ -405,46 +405,78 @@ func New(cfg ServerConfig, s store.Store) *Server {
 	return srv
 }
 
-// ensureSigningKey ensures a signing key exists in the store, loading it if it does
+// ensureSigningKey ensures a signing key exists, loading it if it does
 // or generating and saving it if it doesn't.
-// TODO: This should ultimately be replaced with a proper secret management backing service.
+//
+// When a secret backend (e.g., GCP Secret Manager) is configured, signing keys
+// are stored and retrieved through it. Otherwise, signing keys fall back to
+// direct database storage. This is acceptable for hub-internal infrastructure
+// keys, unlike user-managed secrets which always require a production backend.
 func (s *Server) ensureSigningKey(ctx context.Context, keyName string, existingKey []byte) ([]byte, error) {
 	if len(existingKey) > 0 {
 		return existingKey, nil
 	}
 
-	// Try to load from store
+	// Try to load from the secret backend if configured
+	if s.secretBackend != nil {
+		sv, err := s.secretBackend.Get(ctx, keyName, store.ScopeHub, "hub")
+		if err == nil {
+			slog.Info("Loaded existing signing key from secret backend", "key", keyName)
+			return base64.StdEncoding.DecodeString(sv.Value)
+		}
+		if err != store.ErrNotFound {
+			slog.Warn("Failed to load signing key from secret backend, trying store", "key", keyName, "error", err)
+		}
+	}
+
+	// Fallback: try loading from the store directly (for migration/local dev)
 	val, err := s.store.GetSecretValue(ctx, keyName, store.ScopeHub, "hub")
 	if err == nil {
 		slog.Info("Loaded existing signing key from store", "key", keyName)
 		return base64.StdEncoding.DecodeString(val)
 	}
-
 	if err != store.ErrNotFound {
 		return nil, fmt.Errorf("failed to load signing key %s from store: %w", keyName, err)
 	}
 
-	// Not found, generate a new one
+	// Not found anywhere, generate a new one
 	newKey := make([]byte, 32)
 	if _, err := rand.Read(newKey); err != nil {
 		return nil, fmt.Errorf("failed to generate random signing key: %w", err)
 	}
 
-	// Save to store
-	secret := &store.Secret{
+	encodedKey := base64.StdEncoding.EncodeToString(newKey)
+
+	// Try saving through the secret backend first
+	if s.secretBackend != nil {
+		input := &secret.SetSecretInput{
+			Name:        keyName,
+			Value:       encodedKey,
+			Scope:       store.ScopeHub,
+			ScopeID:     "hub",
+			Description: fmt.Sprintf("Hub signing key for %s", keyName),
+		}
+		if _, _, err := s.secretBackend.Set(ctx, input); err == nil {
+			slog.Info("Persisted new signing key via secret backend", "key", keyName)
+			return newKey, nil
+		} else {
+			slog.Warn("Secret backend unavailable for signing key, falling back to store", "key", keyName, "error", err)
+		}
+	}
+
+	// Fallback: save directly to the store (hub-internal key, acceptable for local dev)
+	sec := &store.Secret{
 		ID:             fmt.Sprintf("hub-%s", keyName),
 		Key:            keyName,
-		EncryptedValue: base64.StdEncoding.EncodeToString(newKey),
+		EncryptedValue: encodedKey,
 		Scope:          store.ScopeHub,
 		ScopeID:        "hub",
 		Description:    fmt.Sprintf("Hub signing key for %s", keyName),
 	}
-
-	if _, err := s.store.UpsertSecret(ctx, secret); err != nil {
-		// Log warning but continue - we will have a random key for this session
+	if _, err := s.store.UpsertSecret(ctx, sec); err != nil {
 		slog.Warn("Failed to persist signing key", "key", keyName, "error", err)
 	} else {
-		slog.Info("Persisted new signing key", "key", keyName)
+		slog.Info("Persisted new signing key to store", "key", keyName)
 	}
 
 	return newKey, nil

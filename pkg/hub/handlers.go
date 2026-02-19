@@ -3214,43 +3214,21 @@ func (s *Server) listSecrets(w http.ResponseWriter, r *http.Request) {
 		scopeID = "default" // TODO: Get from auth context
 	}
 
-	if backend := s.secretBackend; backend != nil {
-		metas, err := backend.List(ctx, secret.Filter{
-			Scope:   scope,
-			ScopeID: scopeID,
-			Name:    query.Get("key"),
-			Type:    query.Get("type"),
-		})
-		if err != nil {
-			writeErrorFromErr(w, err, "")
-			return
-		}
-		// Convert to store.Secret for response compatibility
-		secrets := make([]store.Secret, len(metas))
-		for i, m := range metas {
-			secrets[i] = metaToStoreSecret(m)
-		}
-		writeJSON(w, http.StatusOK, ListSecretsResponse{
-			Secrets: secrets,
-			Scope:   scope,
-			ScopeID: scopeID,
-		})
-		return
-	}
-
-	filter := store.SecretFilter{
+	metas, err := s.secretBackend.List(ctx, secret.Filter{
 		Scope:   scope,
 		ScopeID: scopeID,
-		Key:     query.Get("key"),
+		Name:    query.Get("key"),
 		Type:    query.Get("type"),
-	}
-
-	secrets, err := s.store.ListSecrets(ctx, filter)
+	})
 	if err != nil {
 		writeErrorFromErr(w, err, "")
 		return
 	}
-
+	// Convert to store.Secret for response compatibility
+	secrets := make([]store.Secret, len(metas))
+	for i, m := range metas {
+		secrets[i] = metaToStoreSecret(m)
+	}
 	writeJSON(w, http.StatusOK, ListSecretsResponse{
 		Secrets: secrets,
 		Scope:   scope,
@@ -3291,26 +3269,12 @@ func (s *Server) getSecret(w http.ResponseWriter, r *http.Request, key string) {
 		scopeID = "default" // TODO: Get from auth context
 	}
 
-	if backend := s.secretBackend; backend != nil {
-		meta, err := backend.GetMeta(ctx, key, scope, scopeID)
-		if err != nil {
-			writeErrorFromErr(w, err, "")
-			return
-		}
-		writeJSON(w, http.StatusOK, metaToStoreSecret(*meta))
-		return
-	}
-
-	sec, err := s.store.GetSecret(ctx, key, scope, scopeID)
+	meta, err := s.secretBackend.GetMeta(ctx, key, scope, scopeID)
 	if err != nil {
 		writeErrorFromErr(w, err, "")
 		return
 	}
-
-	// Clear the encrypted value - never expose it
-	sec.EncryptedValue = ""
-
-	writeJSON(w, http.StatusOK, sec)
+	writeJSON(w, http.StatusOK, metaToStoreSecret(*meta))
 }
 
 func (s *Server) setSecret(w http.ResponseWriter, r *http.Request, key string) {
@@ -3378,55 +3342,23 @@ func (s *Server) setSecret(w http.ResponseWriter, r *http.Request, key string) {
 		scopeID = "default" // TODO: Get from auth context
 	}
 
-	if backend := s.secretBackend; backend != nil {
-		input := &secret.SetSecretInput{
-			Name:        key,
-			Value:       req.Value,
-			SecretType:  secretType,
-			Target:      target,
-			Scope:       scope,
-			ScopeID:     scopeID,
-			Description: req.Description,
-		}
-		created, meta, err := backend.Set(ctx, input)
-		if err != nil {
-			writeErrorFromErr(w, err, "")
-			return
-		}
-		result := metaToStoreSecret(*meta)
-		writeJSON(w, http.StatusOK, SetSecretResponse{
-			Secret:  &result,
-			Created: created,
-		})
-		return
+	input := &secret.SetSecretInput{
+		Name:        key,
+		Value:       req.Value,
+		SecretType:  secretType,
+		Target:      target,
+		Scope:       scope,
+		ScopeID:     scopeID,
+		Description: req.Description,
 	}
-
-	// TODO: In production, encrypt the value before storing
-	// For now, we store it as-is (should use proper encryption)
-	encryptedValue := req.Value
-
-	sec := &store.Secret{
-		ID:             api.NewUUID(),
-		Key:            key,
-		EncryptedValue: encryptedValue,
-		SecretType:     secretType,
-		Target:         target,
-		Scope:          scope,
-		ScopeID:        scopeID,
-		Description:    req.Description,
-	}
-
-	created, err := s.store.UpsertSecret(ctx, sec)
+	created, meta, err := s.secretBackend.Set(ctx, input)
 	if err != nil {
 		writeErrorFromErr(w, err, "")
 		return
 	}
-
-	// Clear the encrypted value from response
-	sec.EncryptedValue = ""
-
+	result := metaToStoreSecret(*meta)
 	writeJSON(w, http.StatusOK, SetSecretResponse{
-		Secret:  sec,
+		Secret:  &result,
 		Created: created,
 	})
 }
@@ -3444,16 +3376,7 @@ func (s *Server) deleteSecret(w http.ResponseWriter, r *http.Request, key string
 		scopeID = "default" // TODO: Get from auth context
 	}
 
-	if backend := s.secretBackend; backend != nil {
-		if err := backend.Delete(ctx, key, scope, scopeID); err != nil {
-			writeErrorFromErr(w, err, "")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	if err := s.store.DeleteSecret(ctx, key, scope, scopeID); err != nil {
+	if err := s.secretBackend.Delete(ctx, key, scope, scopeID); err != nil {
 		writeErrorFromErr(w, err, "")
 		return
 	}
@@ -3598,13 +3521,17 @@ func (s *Server) handleGroveSecrets(w http.ResponseWriter, r *http.Request, grov
 
 	switch r.Method {
 	case http.MethodGet:
-		secrets, err := s.store.ListSecrets(ctx, store.SecretFilter{
+		metas, err := s.secretBackend.List(ctx, secret.Filter{
 			Scope:   store.ScopeGrove,
 			ScopeID: groveID,
 		})
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
+		}
+		secrets := make([]store.Secret, len(metas))
+		for i, m := range metas {
+			secrets[i] = metaToStoreSecret(m)
 		}
 		writeJSON(w, http.StatusOK, ListSecretsResponse{
 			Secrets: secrets,
@@ -3632,13 +3559,12 @@ func (s *Server) handleGroveSecretByKey(w http.ResponseWriter, r *http.Request, 
 
 	switch r.Method {
 	case http.MethodGet:
-		secret, err := s.store.GetSecret(ctx, key, store.ScopeGrove, groveID)
+		meta, err := s.secretBackend.GetMeta(ctx, key, store.ScopeGrove, groveID)
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
 		}
-		secret.EncryptedValue = ""
-		writeJSON(w, http.StatusOK, secret)
+		writeJSON(w, http.StatusOK, metaToStoreSecret(*meta))
 
 	case http.MethodPut:
 		var req SetSecretRequest
@@ -3674,26 +3600,25 @@ func (s *Server) handleGroveSecretByKey(w http.ResponseWriter, r *http.Request, 
 				return
 			}
 		}
-		secret := &store.Secret{
-			ID:             api.NewUUID(),
-			Key:            key,
-			EncryptedValue: req.Value, // TODO: Encrypt
-			SecretType:     secretType,
-			Target:         target,
-			Scope:          store.ScopeGrove,
-			ScopeID:        groveID,
-			Description:    req.Description,
+		input := &secret.SetSecretInput{
+			Name:        key,
+			Value:       req.Value,
+			SecretType:  secretType,
+			Target:      target,
+			Scope:       store.ScopeGrove,
+			ScopeID:     groveID,
+			Description: req.Description,
 		}
-		created, err := s.store.UpsertSecret(ctx, secret)
+		created, meta, err := s.secretBackend.Set(ctx, input)
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
 		}
-		secret.EncryptedValue = ""
-		writeJSON(w, http.StatusOK, SetSecretResponse{Secret: secret, Created: created})
+		result := metaToStoreSecret(*meta)
+		writeJSON(w, http.StatusOK, SetSecretResponse{Secret: &result, Created: created})
 
 	case http.MethodDelete:
-		if err := s.store.DeleteSecret(ctx, key, store.ScopeGrove, groveID); err != nil {
+		if err := s.secretBackend.Delete(ctx, key, store.ScopeGrove, groveID); err != nil {
 			writeErrorFromErr(w, err, "")
 			return
 		}
@@ -3984,13 +3909,17 @@ func (s *Server) handleBrokerSecrets(w http.ResponseWriter, r *http.Request, bro
 
 	switch r.Method {
 	case http.MethodGet:
-		secrets, err := s.store.ListSecrets(ctx, store.SecretFilter{
+		metas, err := s.secretBackend.List(ctx, secret.Filter{
 			Scope:   store.ScopeRuntimeBroker,
 			ScopeID: brokerID,
 		})
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
+		}
+		secrets := make([]store.Secret, len(metas))
+		for i, m := range metas {
+			secrets[i] = metaToStoreSecret(m)
 		}
 		writeJSON(w, http.StatusOK, ListSecretsResponse{
 			Secrets: secrets,
@@ -4018,13 +3947,12 @@ func (s *Server) handleBrokerSecretByKey(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodGet:
-		secret, err := s.store.GetSecret(ctx, key, store.ScopeRuntimeBroker, brokerID)
+		meta, err := s.secretBackend.GetMeta(ctx, key, store.ScopeRuntimeBroker, brokerID)
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
 		}
-		secret.EncryptedValue = ""
-		writeJSON(w, http.StatusOK, secret)
+		writeJSON(w, http.StatusOK, metaToStoreSecret(*meta))
 
 	case http.MethodPut:
 		var req SetSecretRequest
@@ -4060,26 +3988,25 @@ func (s *Server) handleBrokerSecretByKey(w http.ResponseWriter, r *http.Request,
 				return
 			}
 		}
-		secret := &store.Secret{
-			ID:             api.NewUUID(),
-			Key:            key,
-			EncryptedValue: req.Value, // TODO: Encrypt
-			SecretType:     secretType,
-			Target:         target,
-			Scope:          store.ScopeRuntimeBroker,
-			ScopeID:        brokerID,
-			Description:    req.Description,
+		input := &secret.SetSecretInput{
+			Name:        key,
+			Value:       req.Value,
+			SecretType:  secretType,
+			Target:      target,
+			Scope:       store.ScopeRuntimeBroker,
+			ScopeID:     brokerID,
+			Description: req.Description,
 		}
-		created, err := s.store.UpsertSecret(ctx, secret)
+		created, meta, err := s.secretBackend.Set(ctx, input)
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
 		}
-		secret.EncryptedValue = ""
-		writeJSON(w, http.StatusOK, SetSecretResponse{Secret: secret, Created: created})
+		result := metaToStoreSecret(*meta)
+		writeJSON(w, http.StatusOK, SetSecretResponse{Secret: &result, Created: created})
 
 	case http.MethodDelete:
-		if err := s.store.DeleteSecret(ctx, key, store.ScopeRuntimeBroker, brokerID); err != nil {
+		if err := s.secretBackend.Delete(ctx, key, store.ScopeRuntimeBroker, brokerID); err != nil {
 			writeErrorFromErr(w, err, "")
 			return
 		}

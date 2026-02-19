@@ -706,85 +706,22 @@ func (d *HTTPAgentDispatcher) DispatchCheckAgentPrompt(ctx context.Context, agen
 // resolveSecrets queries secrets from all applicable scopes and merges them
 // into a flat list. Higher scopes override lower: user < grove < runtime_broker.
 func (d *HTTPAgentDispatcher) resolveSecrets(ctx context.Context, agent *store.Agent) ([]ResolvedSecret, error) {
-	// Delegate to secret backend if configured
-	if d.secretBackend != nil {
-		resolved, err := d.secretBackend.Resolve(ctx, agent.OwnerID, agent.GroveID, agent.RuntimeBrokerID)
-		if err != nil {
-			return nil, err
+	if d.secretBackend == nil {
+		return nil, nil
+	}
+	resolved, err := d.secretBackend.Resolve(ctx, agent.OwnerID, agent.GroveID, agent.RuntimeBrokerID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ResolvedSecret, len(resolved))
+	for i, sv := range resolved {
+		result[i] = ResolvedSecret{
+			Name:   sv.Name,
+			Type:   sv.SecretType,
+			Target: sv.Target,
+			Value:  sv.Value,
+			Source: sv.Scope,
 		}
-		result := make([]ResolvedSecret, len(resolved))
-		for i, sv := range resolved {
-			result[i] = ResolvedSecret{
-				Name:   sv.Name,
-				Type:   sv.SecretType,
-				Target: sv.Target,
-				Value:  sv.Value,
-				Source: sv.Scope,
-			}
-		}
-		return result, nil
-	}
-
-	// Fallback: direct store access (legacy code path)
-	merged := make(map[string]ResolvedSecret)
-
-	// Scope resolution order: user (lowest), grove, runtime_broker (highest)
-	type scopeEntry struct {
-		scope   string
-		scopeID string
-	}
-
-	var scopes []scopeEntry
-	if agent.OwnerID != "" {
-		scopes = append(scopes, scopeEntry{scope: store.ScopeUser, scopeID: agent.OwnerID})
-	}
-	if agent.GroveID != "" {
-		scopes = append(scopes, scopeEntry{scope: store.ScopeGrove, scopeID: agent.GroveID})
-	}
-	if agent.RuntimeBrokerID != "" {
-		scopes = append(scopes, scopeEntry{scope: store.ScopeRuntimeBroker, scopeID: agent.RuntimeBrokerID})
-	}
-
-	for _, s := range scopes {
-		secrets, err := d.store.ListSecrets(ctx, store.SecretFilter{
-			Scope:   s.scope,
-			ScopeID: s.scopeID,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to list secrets for scope %s/%s: %w", s.scope, s.scopeID, err)
-		}
-
-		for _, sec := range secrets {
-			value, err := d.store.GetSecretValue(ctx, sec.Key, s.scope, s.scopeID)
-			if err != nil {
-				if d.debug {
-					slog.Warn("Failed to get secret value", "key", sec.Key, "scope", s.scope, "error", err)
-				}
-				continue
-			}
-
-			secretType := sec.SecretType
-			if secretType == "" {
-				secretType = store.SecretTypeEnvironment
-			}
-			target := sec.Target
-			if target == "" {
-				target = sec.Key
-			}
-
-			merged[sec.Key] = ResolvedSecret{
-				Name:   sec.Key,
-				Type:   secretType,
-				Target: target,
-				Value:  value,
-				Source: s.scope,
-			}
-		}
-	}
-
-	result := make([]ResolvedSecret, 0, len(merged))
-	for _, rs := range merged {
-		result = append(result, rs)
 	}
 	return result, nil
 }

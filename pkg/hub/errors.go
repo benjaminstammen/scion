@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ptone/scion-agent/pkg/secret"
 	"github.com/ptone/scion-agent/pkg/store"
 )
 
@@ -108,6 +109,10 @@ func writeErrorFromErr(w http.ResponseWriter, err error, requestID string) {
 		statusCode = http.StatusBadRequest
 		code = ErrCodeValidationError
 		message = "Invalid input"
+	case errors.Is(err, secret.ErrNoSecretBackend):
+		statusCode = http.StatusNotImplemented
+		code = ErrCodeUnavailable
+		message = err.Error()
 	default:
 		statusCode = http.StatusInternalServerError
 		code = ErrCodeInternalError

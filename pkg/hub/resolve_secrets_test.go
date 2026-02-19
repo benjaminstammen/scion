@@ -82,9 +82,11 @@ func TestResolveSecrets(t *testing.T) {
 		}
 	}
 
-	// Create dispatcher
+	// Create dispatcher with local backend (reads work, writes are blocked)
+	backend := secret.NewLocalBackend(memStore)
 	mockClient := &mockRuntimeBrokerClient{}
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+	dispatcher.SetSecretBackend(backend)
 
 	agent := &store.Agent{
 		ID:      "agent-1",
@@ -159,33 +161,43 @@ func TestResolveSecrets_WithBackend(t *testing.T) {
 	memStore := createTestStore(t)
 	ctx := context.Background()
 
-	// Set up secrets via the backend
+	// Seed secrets directly through the store
+	for _, s := range []*store.Secret{
+		{
+			ID:             "s1",
+			Key:            "API_KEY",
+			EncryptedValue: "user-api-key",
+			SecretType:     store.SecretTypeEnvironment,
+			Target:         "API_KEY",
+			Scope:          store.ScopeUser,
+			ScopeID:        "user-1",
+		},
+		{
+			ID:             "s2",
+			Key:            "API_KEY",
+			EncryptedValue: "grove-api-key",
+			SecretType:     store.SecretTypeEnvironment,
+			Target:         "API_KEY",
+			Scope:          store.ScopeGrove,
+			ScopeID:        "grove-1",
+		},
+		{
+			ID:             "s3",
+			Key:            "DB_PASS",
+			EncryptedValue: "db-password",
+			SecretType:     store.SecretTypeEnvironment,
+			Target:         "DATABASE_PASSWORD",
+			Scope:          store.ScopeGrove,
+			ScopeID:        "grove-1",
+		},
+	} {
+		if err := memStore.CreateSecret(ctx, s); err != nil {
+			t.Fatalf("failed to seed secret %s: %v", s.Key, err)
+		}
+	}
+
+	// Create dispatcher with local backend
 	backend := secret.NewLocalBackend(memStore)
-
-	_, _, _ = backend.Set(ctx, &secret.SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "user-api-key",
-		SecretType: secret.TypeEnvironment,
-		Scope:      secret.ScopeUser,
-		ScopeID:    "user-1",
-	})
-	_, _, _ = backend.Set(ctx, &secret.SetSecretInput{
-		Name:       "API_KEY",
-		Value:      "grove-api-key",
-		SecretType: secret.TypeEnvironment,
-		Scope:      secret.ScopeGrove,
-		ScopeID:    "grove-1",
-	})
-	_, _, _ = backend.Set(ctx, &secret.SetSecretInput{
-		Name:       "DB_PASS",
-		Value:      "db-password",
-		SecretType: secret.TypeEnvironment,
-		Target:     "DATABASE_PASSWORD",
-		Scope:      secret.ScopeGrove,
-		ScopeID:    "grove-1",
-	})
-
-	// Create dispatcher with backend
 	mockClient := &mockRuntimeBrokerClient{}
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
 	dispatcher.SetSecretBackend(backend)
@@ -237,8 +249,10 @@ func TestResolveSecrets_NoOwner(t *testing.T) {
 	memStore := createTestStore(t)
 	ctx := context.Background()
 
+	backend := secret.NewLocalBackend(memStore)
 	mockClient := &mockRuntimeBrokerClient{}
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+	dispatcher.SetSecretBackend(backend)
 
 	agent := &store.Agent{
 		ID:   "agent-1",
@@ -252,5 +266,29 @@ func TestResolveSecrets_NoOwner(t *testing.T) {
 
 	if len(resolved) != 0 {
 		t.Errorf("expected 0 resolved secrets for agent with no owner, got %d", len(resolved))
+	}
+}
+
+func TestResolveSecrets_NoBackend(t *testing.T) {
+	memStore := createTestStore(t)
+	ctx := context.Background()
+
+	// Dispatcher without a secret backend returns nil
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:      "agent-1",
+		Name:    "test-agent",
+		OwnerID: "user-1",
+		GroveID: "grove-1",
+	}
+
+	resolved, err := dispatcher.resolveSecrets(ctx, agent)
+	if err != nil {
+		t.Fatalf("resolveSecrets failed: %v", err)
+	}
+	if resolved != nil {
+		t.Errorf("expected nil resolved secrets when no backend, got %d", len(resolved))
 	}
 }
