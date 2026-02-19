@@ -85,7 +85,7 @@ scion init
 ```
 
 This creates a `.scion` directory in your project root containing:
-- `settings.json`: Grove-specific settings.
+- `settings.yaml`: Grove-specific settings.
 - `templates/`: Default agent templates (gemini, claude, etc.).
 
 **Note:** If you are in a git repository, it is recommended to add `.scion/agents` to your `.gitignore` to avoid issues with nested git worktrees:
@@ -98,9 +98,9 @@ Scion automatically selects the appropriate runtime based on your operating syst
 - **macOS**: Defaults to `container` (Apple Virtualization Framework).
 - **Linux/Windows**: Defaults to `docker` (or `podman` if Docker is missing).
 
-If you wish to change this (e.g., to use Podman on macOS), you can manually edit `.scion/settings.json`:
+If you wish to change this (e.g., to use Podman on macOS), you can manually edit `.scion/settings.yaml`:
 
-```json
+```yaml
 {
   "profiles": {
     "local": {

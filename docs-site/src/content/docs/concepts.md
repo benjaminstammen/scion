@@ -20,9 +20,9 @@ The **Hub** is the central control plane of a hosted Scion architecture. It acts
 - **Collaboration**: Provides a shared view of the system via the Web Dashboard and Hub API.
 
 ### Profile
-A **Profile** defines a complete execution environment by binding a specific **Runtime** to a set of behavior flags (like `tmux` support) and **Harness** configuration overrides.
+A **Profile** defines a complete execution environment by binding a specific **Runtime** to a set of behavior flags and **Harness** configuration overrides.
 - Profiles allow you to switch between different environments (e.g., "Local Docker", "Production Kubernetes") without modifying agent templates.
-- They are defined in the global or grove `settings.json`.
+- They are defined in the global or grove `settings.yaml`.
 
 ### Harness
 A **Harness** adapts a specific underlying LLM tool or agent software (like Gemini CLI, Claude Code, or OpenAI Codex) into the Scion ecosystem.

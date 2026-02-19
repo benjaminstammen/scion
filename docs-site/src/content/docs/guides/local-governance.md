@@ -22,17 +22,12 @@ active_profile: local
 profiles:
   local:
     runtime: docker
-    tmux: true
     default_template: gemini
-  
-  headless:
-    runtime: docker
-    tmux: false
 ```
 
 You can switch profiles using the `--profile` flag:
 ```bash
-scion start my-agent --profile headless
+scion start my-agent --profile local
 ```
 
 ### Runtimes
@@ -71,15 +66,6 @@ harness_configs:
 ```
 
 ## Common Local Customizations
-
-### Enabling Tmux
-Tmux allows you to attach/detach from agent sessions without stopping them. It's highly recommended for local development.
-
-```yaml
-profiles:
-  local:
-    tmux: true
-```
 
 ### Injecting Environment Variables
 You can inject host environment variables into all agents running under a specific profile.

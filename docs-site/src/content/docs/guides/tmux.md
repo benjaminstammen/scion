@@ -1,73 +1,54 @@
 ---
-title: Using Tmux with Scion
+title: Interactive Sessions with Tmux
+description: Learn how to use and customize the built-in tmux session management in Scion.
 ---
 
-Scion supports wrapping agent sessions in `tmux`, a terminal multiplexer. This enables persistent sessions, shared collaboration, and compatibility with certain runtimes.
+Scion uses [tmux](https://github.com/tmux/tmux), a terminal multiplexer, as the default and mandatory shell wrapper for all agent sessions. This ensures that every interactive session is persistent, collaborative, and consistent across all runtimes (Docker, Apple Virtualization, Kubernetes, etc.).
 
-## Enabling Tmux
+## Why Tmux?
 
-You can enable tmux support globally, per-runtime, or for a specific agent start.
+Tmux is automatically started inside every Scion agent. This provides several critical features:
 
-### Global/Runtime Configuration
-In your `settings.json` (either global `~/.scion/settings.json` or project-local `.scion/settings.json`), set `tmux: true` within a runtime configuration.
+1.  **Session Persistence**: You can detach from an agent session without stopping the underlying process. If your terminal connection drops, the agent keeps working.
+2.  **Reliable Attachment**: `scion attach <agent-name>` always connects you to the same persistent shell session.
+3.  **Live Collaboration**: Multiple users can run `scion attach` for the same agent simultaneously. Everyone sees the same screen and can type together, creating a built-in pair-programming environment.
 
-```json
-{
-  "runtimes": {
-    "local-dev": {
-      "runtime": "docker",
-      "tmux": true
-    }
-  }
-}
+## Basic Operations
+
+When you are attached to an agent, you interact with `tmux` using a **prefix key** (Default: `Ctrl-b`).
+
+| Action | Command |
+| :--- | :--- |
+| **Detach from Session** | `Prefix` then `d` |
+| **Enter Scroll Mode** | `Prefix` then `[` (use arrow keys, `q` to exit) |
+| **Split Vertically** | `Prefix` then `%` |
+| **Split Horizontally** | `Prefix` then `"` |
+| **Switch Panes** | `Prefix` then `Arrow Keys` |
+
+## Customizing Your Session
+
+Each agent's `tmux` behavior is controlled by a `.tmux.conf` file in its home directory. This file is seeded from your project's template.
+
+### Changing Settings for New Agents
+
+To change the default `tmux` configuration for all **new** agents in a project, modify the template file:
+`.scion/templates/default/home/.tmux.conf`
+
+### Solving Nested Sessions (Google Cloud Shell)
+
+If you are running Scion inside another `tmux` session (such as in **Google Cloud Shell** or your own local `tmux`), the default `Ctrl-b` prefix will be intercepted by your "outer" session.
+
+To use a different prefix (like `Ctrl-a`) for your Scion agents, add the following to your `.tmux.conf` template:
+
+```tmux
+# Set prefix to Ctrl-a
+set -g prefix C-a
+unbind C-b
+bind C-a send-prefix
 ```
 
-### Profile Configuration
-You can also define it in a profile:
+After updating the template, any new agents you create will use `Ctrl-a` as their prefix, allowing you to use `Ctrl-b` for your host session and `Ctrl-a` for the Scion agent session.
 
-```json
-{
-  "profiles": {
-    "pair-programming": {
-      "runtime": "local-dev",
-      "tmux": true
-    }
-  }
-}
-```
+## Configuration Reference
 
-When enabled, the agent container must have `tmux` installed. Standard Scion images include this by default.
-
-## Attaching to Sessions
-
-When `tmux` is enabled, running `scion attach <agent-name>` connects you directly to the agent's tmux session.
-
-```bash
-scion attach agent-1
-```
-
-Because the session is managed by tmux:
-1.  **Persistence**: You can detach from the session (default tmux bind: `Ctrl-b` then `d`) without stopping the agent process.
-2.  **Re-attach**: You can re-attach later from the same or a different terminal.
-
-## Shared Collaboration
-
-A powerful feature of using tmux is the ability for multiple users to attach to the same agent session simultaneously.
-
-If you are running an agent on a remote machine (or a shared server accessible to multiple users), multiple developers can run `scion attach <agent-name>` targeting the same agent. Everyone attached will see the exact same screen and can type simultaneously. This effectively creates a **live pair-programming environment** inside the agent's context.
-
-## Apple Silicon (Apple Container Runtime)
-
-The `apple-container` runtime (using Apple's Virtualization Framework) **requires** tmux to support interactive attachment.
-
-Unlike Docker and Podman, the Apple container runtime does not support standard stream attachment to a running process's PID 1. Scion works around this by executing a `tmux attach` command inside the container. If you are using the `container` runtime on macOS, you **must** set `tmux: true`.
-
-## Known Issues
-
-### Terminal Color & Banner Rendering
-
-When running inside a tmux session within a container, the terminal capabilities may differ from your host terminal. You might notice that complex modern terminal graphics—specifically banner logos using specific ANSI coloring or unicode block characters—may not render correctly.
-
-**Symptom**: You may see `___` patterns or stripped colors in banner logos instead of smooth gradients or solid blocks.
-
-**Workaround**: This is purely cosmetic and does not affect the functionality of the agent or CLI tools.
+While `tmux` is now mandatory, you may still see `tmux: true` in legacy `settings.yaml` files. This setting is now effectively ignored as the orchestrator always wraps sessions in `tmux`.

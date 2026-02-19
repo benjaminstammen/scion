@@ -101,9 +101,12 @@ runtimes:
 | `host` | string | (Docker/Podman) The daemon socket or TCP address. Optional for Podman (defaults to CLI). |
 | `context` | string | (Kubernetes) The kubectl context name. |
 | `namespace` | string | (Kubernetes) The target namespace. |
-| `tmux` | bool | Whether to wrap agent processes in a tmux session. |
 | `sync` | string | File sync strategy (e.g., `tar`, `mutagen`). |
 | `env` | map | Environment variables to set for the runtime. |
+
+:::note
+The `tmux` field is now deprecated. All agent sessions are wrapped in tmux by default.
+:::
 
 ## Harness Configs (`harness_configs`)
 
@@ -156,7 +159,6 @@ profiles:
 | `runtime` | string | **Required**. Name of a runtime defined in `runtimes`. |
 | `default_template` | string | Default template for agents created under this profile. |
 | `default_harness_config` | string | Default harness config to use. |
-| `tmux` | bool | Override the runtime's tmux setting. |
 | `env` | map | Environment variables merged into the runtime environment. |
 | `harness_overrides` | map | Per-harness-config overrides. Keys match `harness_configs` names. |
 
