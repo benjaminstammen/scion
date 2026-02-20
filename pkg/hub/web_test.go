@@ -192,6 +192,11 @@ func TestStaticAssetHandler_HashedCaching(t *testing.T) {
 
 func TestStaticAssetHandler_NoAssets(t *testing.T) {
 	ws := newTestWebServer(t, WebServerConfig{})
+	// Force the no-assets state regardless of whether web.AssetsEmbedded is true.
+	// Without this, the embedded FS would be used and the test would only pass
+	// if the embedded dist/client/ directory happens to lack the requested file.
+	ws.assets = nil
+	ws.assetsDisk = ""
 
 	req := httptest.NewRequest("GET", "/assets/main.js", nil)
 	rec := httptest.NewRecorder()
