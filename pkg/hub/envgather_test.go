@@ -323,6 +323,87 @@ func TestEnvGather_HubHandler_202Response(t *testing.T) {
 	}
 }
 
+// TestEnvGather_HubHandler_GroveRoute_202Response tests env-gather via the
+// grove-scoped route /api/v1/groves/{groveId}/agents which is the path the CLI uses.
+func TestEnvGather_HubHandler_GroveRoute_202Response(t *testing.T) {
+	srv, st := testServer(t)
+	ctx := context.Background()
+
+	// Create grove
+	grove := &store.Grove{ID: "grove-gather-route", Name: "gather-route-grove", Slug: "gather-route-grove"}
+	if err := st.CreateGrove(ctx, grove); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create broker
+	broker := &store.RuntimeBroker{
+		ID: "broker-gather-route", Name: "gather-route-broker", Slug: "gather-route-broker",
+		Endpoint: "http://localhost:9800", Status: store.BrokerStatusOnline,
+	}
+	if err := st.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add provider with local path so template can be resolved locally
+	if err := st.AddGroveProvider(ctx, &store.GroveProvider{
+		GroveID: "grove-gather-route", BrokerID: "broker-gather-route",
+		LocalPath: "/tmp/test-grove",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up dispatcher with mock that returns env requirements
+	mockClient := &envGatherMockBrokerClient{
+		gatherReturnEnvReqs: &RemoteEnvRequirementsResponse{
+			AgentID:  "will-be-set",
+			Required: []string{"GEMINI_API_KEY"},
+			Needs:    []string{"GEMINI_API_KEY"},
+		},
+	}
+	dispatcher := NewHTTPAgentDispatcherWithClient(st, mockClient, true)
+	srv.SetDispatcher(dispatcher)
+
+	// Create agent via grove-scoped route with GatherEnv=true
+	reqBody := map[string]interface{}{
+		"name":      "gather-route-agent",
+		"template":  "claude",
+		"gatherEnv": true,
+	}
+
+	rec := doRequest(t, srv, http.MethodPost,
+		fmt.Sprintf("/api/v1/groves/%s/agents", grove.ID), reqBody)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CreateAgentResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal("failed to decode response:", err)
+	}
+
+	if resp.EnvGather == nil {
+		t.Fatal("expected EnvGather to be set in response")
+	}
+
+	if len(resp.EnvGather.Needs) != 1 || resp.EnvGather.Needs[0] != "GEMINI_API_KEY" {
+		t.Errorf("expected needs=[GEMINI_API_KEY], got %v", resp.EnvGather.Needs)
+	}
+
+	// Agent should be in provisioning status
+	if resp.Agent == nil {
+		t.Fatal("expected agent in response")
+	}
+	if resp.Agent.Status != store.AgentStatusProvisioning {
+		t.Errorf("expected agent status=%q, got %q", store.AgentStatusProvisioning, resp.Agent.Status)
+	}
+
+	// Verify the dispatcher was called with gather (not regular create)
+	if !mockClient.createWithGatherCalled {
+		t.Error("expected CreateAgentWithGather to be called, but it wasn't")
+	}
+}
+
 // TestEnvGather_HubHandler_SubmitEnv tests the env submission endpoint.
 func TestEnvGather_HubHandler_SubmitEnv(t *testing.T) {
 	srv, st := testServer(t)

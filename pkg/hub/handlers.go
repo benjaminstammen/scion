@@ -2031,18 +2031,51 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 	var warnings []string
 	if dispatcher := s.GetDispatcher(); dispatcher != nil {
 		if !req.ProvisionOnly {
-			if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
-				// Log the error but don't fail the request - agent is created in Hub
-				warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
-				// The agent remains in pending status
-			} else {
-				// agent.Status is already set by applyBrokerResponse in DispatchAgentCreate.
-				// Only fall back to provisioning if the broker didn't report a status.
-				if agent.Status == store.AgentStatusPending {
+			// Use env-gather dispatch if requested
+			if req.GatherEnv {
+				slog.Debug("Hub: env-gather requested, using DispatchAgentCreateWithGather",
+					"agent", agent.Name, "broker", agent.RuntimeBrokerID)
+				envReqs, err := dispatcher.DispatchAgentCreateWithGather(ctx, agent)
+				if err != nil {
+					warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
+				} else if envReqs != nil {
+					// Broker returned 202: needs env gather
 					agent.Status = store.AgentStatusProvisioning
+					if err := s.store.UpdateAgent(ctx, agent); err != nil {
+						slog.Warn("Failed to update agent status for env-gather", "error", err)
+					}
+
+					s.enrichAgent(ctx, agent, grove, nil)
+					hubEnvGather := s.buildEnvGatherResponse(ctx, agent, envReqs)
+
+					writeJSON(w, http.StatusAccepted, CreateAgentResponse{
+						Agent:    agent,
+						Warnings: warnings,
+						EnvGather: hubEnvGather,
+					})
+					return
+				} else {
+					if agent.Status == store.AgentStatusPending {
+						agent.Status = store.AgentStatusProvisioning
+					}
+					if err := s.store.UpdateAgent(ctx, agent); err != nil {
+						warnings = append(warnings, "Failed to update agent status: "+err.Error())
+					}
 				}
-				if err := s.store.UpdateAgent(ctx, agent); err != nil {
-					warnings = append(warnings, "Failed to update agent status: "+err.Error())
+			} else {
+				if err := dispatcher.DispatchAgentCreate(ctx, agent); err != nil {
+					// Log the error but don't fail the request - agent is created in Hub
+					warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
+					// The agent remains in pending status
+				} else {
+					// agent.Status is already set by applyBrokerResponse in DispatchAgentCreate.
+					// Only fall back to provisioning if the broker didn't report a status.
+					if agent.Status == store.AgentStatusPending {
+						agent.Status = store.AgentStatusProvisioning
+					}
+					if err := s.store.UpdateAgent(ctx, agent); err != nil {
+						warnings = append(warnings, "Failed to update agent status: "+err.Error())
+					}
 				}
 			}
 		} else {
