@@ -99,13 +99,18 @@ func TestOutputActionResult(t *testing.T) {
 		assert.Equal(t, "test message", parsed.Message)
 	})
 
-	t.Run("plain mode outputs text", func(t *testing.T) {
+	t.Run("plain mode outputs message to stdout and warnings to stderr", func(t *testing.T) {
 		outputFormat = "plain"
 
 		// Capture stdout
 		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
+		stdoutR, stdoutW, _ := os.Pipe()
+		os.Stdout = stdoutW
+
+		// Capture stderr
+		oldStderr := os.Stderr
+		stderrR, stderrW, _ := os.Pipe()
+		os.Stderr = stderrW
 
 		result := ActionResult{
 			Status:  "success",
@@ -116,15 +121,135 @@ func TestOutputActionResult(t *testing.T) {
 		err := outputActionResult(result)
 		require.NoError(t, err)
 
-		w.Close()
+		stdoutW.Close()
+		stderrW.Close()
 		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 
-		var buf bytes.Buffer
-		buf.ReadFrom(r)
-		output := buf.String()
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutBuf.ReadFrom(stdoutR)
+		stderrBuf.ReadFrom(stderrR)
 
-		assert.Contains(t, output, "test message")
-		assert.Contains(t, output, "Warning: warning 1")
+		assert.Contains(t, stdoutBuf.String(), "test message")
+		assert.NotContains(t, stdoutBuf.String(), "Warning:")
+		assert.Contains(t, stderrBuf.String(), "Warning: warning 1")
+	})
+}
+
+func TestStatusfWritesToStderr(t *testing.T) {
+	origFormat := outputFormat
+	defer func() { outputFormat = origFormat }()
+
+	t.Run("plain mode writes to stderr not stdout", func(t *testing.T) {
+		outputFormat = "plain"
+
+		oldStdout := os.Stdout
+		stdoutR, stdoutW, _ := os.Pipe()
+		os.Stdout = stdoutW
+
+		oldStderr := os.Stderr
+		stderrR, stderrW, _ := os.Pipe()
+		os.Stderr = stderrW
+
+		statusf("hello %s\n", "world")
+		statusln("goodbye")
+
+		stdoutW.Close()
+		stderrW.Close()
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutBuf.ReadFrom(stdoutR)
+		stderrBuf.ReadFrom(stderrR)
+
+		assert.Empty(t, stdoutBuf.String(), "statusf/statusln should not write to stdout")
+		assert.Contains(t, stderrBuf.String(), "hello world")
+		assert.Contains(t, stderrBuf.String(), "goodbye")
+	})
+
+	t.Run("json mode suppresses output entirely", func(t *testing.T) {
+		outputFormat = "json"
+
+		oldStdout := os.Stdout
+		stdoutR, stdoutW, _ := os.Pipe()
+		os.Stdout = stdoutW
+
+		oldStderr := os.Stderr
+		stderrR, stderrW, _ := os.Pipe()
+		os.Stderr = stderrW
+
+		statusf("should not appear\n")
+		statusln("also hidden")
+
+		stdoutW.Close()
+		stderrW.Close()
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutBuf.ReadFrom(stdoutR)
+		stderrBuf.ReadFrom(stderrR)
+
+		assert.Empty(t, stdoutBuf.String(), "statusf/statusln should not write to stdout in JSON mode")
+		assert.Empty(t, stderrBuf.String(), "statusf/statusln should not write to stderr in JSON mode")
+	})
+}
+
+func TestPrintUsingHubWritesToStderr(t *testing.T) {
+	origFormat := outputFormat
+	defer func() { outputFormat = origFormat }()
+
+	t.Run("plain mode writes to stderr", func(t *testing.T) {
+		outputFormat = "plain"
+
+		oldStdout := os.Stdout
+		stdoutR, stdoutW, _ := os.Pipe()
+		os.Stdout = stdoutW
+
+		oldStderr := os.Stderr
+		stderrR, stderrW, _ := os.Pipe()
+		os.Stderr = stderrW
+
+		PrintUsingHub("http://localhost:8080")
+
+		stdoutW.Close()
+		stderrW.Close()
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutBuf.ReadFrom(stdoutR)
+		stderrBuf.ReadFrom(stderrR)
+
+		assert.Empty(t, stdoutBuf.String(), "PrintUsingHub should not write to stdout")
+		assert.Contains(t, stderrBuf.String(), "Using hub: http://localhost:8080")
+	})
+
+	t.Run("json mode suppresses output", func(t *testing.T) {
+		outputFormat = "json"
+
+		oldStdout := os.Stdout
+		stdoutR, stdoutW, _ := os.Pipe()
+		os.Stdout = stdoutW
+
+		oldStderr := os.Stderr
+		stderrR, stderrW, _ := os.Pipe()
+		os.Stderr = stderrW
+
+		PrintUsingHub("http://localhost:8080")
+
+		stdoutW.Close()
+		stderrW.Close()
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+
+		var stdoutBuf, stderrBuf bytes.Buffer
+		stdoutBuf.ReadFrom(stdoutR)
+		stderrBuf.ReadFrom(stderrR)
+
+		assert.Empty(t, stdoutBuf.String(), "PrintUsingHub should not write to stdout in JSON mode")
+		assert.Empty(t, stderrBuf.String(), "PrintUsingHub should not write to stderr in JSON mode")
 	})
 }
 

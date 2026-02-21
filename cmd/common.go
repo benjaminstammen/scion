@@ -181,9 +181,13 @@ func CheckHubAvailabilitySimple(grovePath string) (*HubContext, error) {
 	}, nil
 }
 
-// PrintUsingHub prints the informational message about using the Hub.
+// PrintUsingHub prints the informational message about using the Hub to stderr.
+// It is suppressed entirely in JSON output mode to keep stdout clean.
 func PrintUsingHub(endpoint string) {
-	fmt.Printf("Using hub: %s\n", endpoint)
+	if isJSONOutput() {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Using hub: %s\n", endpoint)
 }
 
 // wrapHubError wraps a Hub error with guidance to disable Hub integration.
@@ -333,12 +337,10 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 	}
 
 	// We still might want to show some progress in the CLI
-	if !isJSONOutput() {
-		if resume {
-			fmt.Printf("Resuming agent '%s'...\n", agentName)
-		} else {
-			fmt.Printf("Starting agent '%s'...\n", agentName)
-		}
+	if resume {
+		statusf("Resuming agent '%s'...\n", agentName)
+	} else {
+		statusf("Starting agent '%s'...\n", agentName)
 	}
 
 	info, err := mgr.Start(context.Background(), opts)
@@ -346,14 +348,12 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 		return err
 	}
 
-	if !isJSONOutput() {
-		for _, w := range info.Warnings {
-			fmt.Fprintln(os.Stderr, w)
-		}
+	for _, w := range info.Warnings {
+		fmt.Fprintln(os.Stderr, w)
 	}
 
 	if !info.Detached {
-		fmt.Printf("Attaching to agent '%s'...\n", agentName)
+		statusf("Attaching to agent '%s'...\n", agentName)
 
 		// Wait for the container to be ready before attaching.
 		// After container start, sciontool init needs time to set up the user,
@@ -385,7 +385,7 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 		})
 	}
 
-	fmt.Printf("Agent '%s' %s successfully (ID: %s)\n", agentName, displayStatus, info.ID)
+	statusf("Agent '%s' %s successfully (ID: %s)\n", agentName, displayStatus, info.ID)
 
 	return nil
 }
@@ -416,9 +416,7 @@ func waitForTmuxSession(rt runtime.Runtime, agentName string) error {
 }
 
 func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) error {
-	if !isJSONOutput() {
-		PrintUsingHub(hubCtx.Endpoint)
-	}
+	PrintUsingHub(hubCtx.Endpoint)
 
 	// Get the grove ID for this project
 	groveID, err := GetGroveID(hubCtx)
@@ -566,14 +564,14 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 
 	// Workspace bootstrap: upload files and finalize
 	if len(workspaceFiles) > 0 && len(resp.UploadURLs) == 0 {
-		fmt.Println("Using local workspace on broker.")
+		statusln("Using local workspace on broker.")
 	}
 	if len(resp.UploadURLs) > 0 && len(workspaceFiles) > 0 {
-		fmt.Printf("Uploading workspace (%d files)...\n", len(workspaceFiles))
+		statusf("Uploading workspace (%d files)...\n", len(workspaceFiles))
 		tc := transfer.NewClient(nil)
 		uploadErr := tc.UploadFiles(ctx, workspaceFiles, resp.UploadURLs, func(file transfer.FileInfo, bytesTransferred int64) error {
 			if bytesTransferred == file.Size {
-				fmt.Printf("  Uploaded: %s\n", file.Path)
+				statusf("  Uploaded: %s\n", file.Path)
 			}
 			return nil
 		})
@@ -592,10 +590,10 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		if err != nil {
 			return fmt.Errorf("failed to finalize workspace bootstrap: %w", err)
 		}
-		fmt.Printf("Workspace uploaded: %d files\n", finalizeResp.FilesApplied)
+		statusf("Workspace uploaded: %d files\n", finalizeResp.FilesApplied)
 
 		// Poll until agent is running
-		fmt.Printf("Waiting for agent '%s' to start...\n", agentName)
+		statusf("Waiting for agent '%s' to start...\n", agentName)
 		pollCtx, pollCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer pollCancel()
 		ticker := time.NewTicker(2 * time.Second)
@@ -611,7 +609,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 					continue
 				}
 				if agent.Status == "running" {
-					fmt.Printf("Agent '%s' started via Hub.\n", agentName)
+					statusf("Agent '%s' started via Hub.\n", agentName)
 					if !attach {
 						return nil
 					}
@@ -624,7 +622,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 					if token == "" {
 						return fmt.Errorf("no access token found for Hub\n\nPlease login first: scion hub auth login")
 					}
-					fmt.Printf("Attaching to agent '%s' via Hub...\n", agentName)
+					statusf("Attaching to agent '%s' via Hub...\n", agentName)
 					return wsclient.AttachToAgent(context.Background(), hubCtx.Endpoint, token, agentID)
 				}
 				if agent.Status == "error" || agent.Status == "stopped" {
@@ -658,13 +656,13 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		return outputJSON(result)
 	}
 
-	fmt.Printf("Agent '%s' %s via Hub.\n", agentName, displayStatus)
+	statusf("Agent '%s' %s via Hub.\n", agentName, displayStatus)
 	if resp.Agent != nil {
-		fmt.Printf("Agent Slug: %s\n", resp.Agent.Slug)
-		fmt.Printf("Status: %s\n", resp.Agent.Status)
+		statusf("Agent Slug: %s\n", resp.Agent.Slug)
+		statusf("Status: %s\n", resp.Agent.Status)
 	}
 	for _, w := range resp.Warnings {
-		fmt.Printf("Warning: %s\n", w)
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
 
 	if !attach {
@@ -681,7 +679,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 	}
 
 	// Poll until the agent is running
-	fmt.Printf("Waiting for agent '%s' to be ready...\n", agentName)
+	statusf("Waiting for agent '%s' to be ready...\n", agentName)
 	pollCtx, pollCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer pollCancel()
 
@@ -721,7 +719,7 @@ ready:
 		return fmt.Errorf("no access token found for Hub\n\nPlease login first: scion hub auth login")
 	}
 
-	fmt.Printf("Attaching to agent '%s' via Hub...\n", agentName)
+	statusf("Attaching to agent '%s' via Hub...\n", agentName)
 	return wsclient.AttachToAgent(context.Background(), hubCtx.Endpoint, token, agentID)
 }
 
@@ -846,17 +844,15 @@ func gatherAndSubmitEnv(ctx context.Context, hubCtx *HubContext, groveID string,
 	}
 
 	// Print summary of env status
-	if !isJSONOutput() {
-		fmt.Println("\nEnvironment variable resolution:")
-		if len(gather.HubHas) > 0 {
-			for _, src := range gather.HubHas {
-				fmt.Printf("  %s — provided by Hub (%s)\n", src.Key, src.Scope)
-			}
+	statusln("\nEnvironment variable resolution:")
+	if len(gather.HubHas) > 0 {
+		for _, src := range gather.HubHas {
+			statusf("  %s — provided by Hub (%s)\n", src.Key, src.Scope)
 		}
-		if len(gather.BrokerHas) > 0 {
-			for _, key := range gather.BrokerHas {
-				fmt.Printf("  %s — provided by Broker\n", key)
-			}
+	}
+	if len(gather.BrokerHas) > 0 {
+		for _, key := range gather.BrokerHas {
+			statusf("  %s — provided by Broker\n", key)
 		}
 	}
 
@@ -866,9 +862,7 @@ func gatherAndSubmitEnv(ctx context.Context, hubCtx *HubContext, groveID string,
 	for _, key := range gather.Needs {
 		if val := os.Getenv(key); val != "" {
 			gatheredEnv[key] = val
-			if !isJSONOutput() {
-				fmt.Printf("  %s — found in local environment\n", key)
-			}
+			statusf("  %s — found in local environment\n", key)
 		} else {
 			missingKeys = append(missingKeys, key)
 		}
@@ -876,15 +870,15 @@ func gatherAndSubmitEnv(ctx context.Context, hubCtx *HubContext, groveID string,
 
 	if len(missingKeys) > 0 {
 		if !isJSONOutput() {
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 			for _, key := range missingKeys {
-				fmt.Printf("  %s — MISSING (not in local environment)\n", key)
+				fmt.Fprintf(os.Stderr, "  %s — MISSING (not in local environment)\n", key)
 			}
-			fmt.Printf("\nTo set missing variables on the Hub, use:\n")
+			fmt.Fprintf(os.Stderr, "\nTo set missing variables on the Hub, use:\n")
 			for _, key := range missingKeys {
-				fmt.Printf("  scion hub env set %s <value>\n", key)
+				fmt.Fprintf(os.Stderr, "  scion hub env set %s <value>\n", key)
 			}
-			fmt.Println()
+			fmt.Fprintln(os.Stderr)
 		}
 		return nil, fmt.Errorf("cannot satisfy required environment variables: %v", missingKeys)
 	}
@@ -897,7 +891,7 @@ func gatherAndSubmitEnv(ctx context.Context, hubCtx *HubContext, groveID string,
 	// In interactive mode, confirm before sending env vars
 	if util.IsTerminal() && !autoConfirm {
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Printf("\nSend %d environment variable(s) to the Hub? [Y/n]: ", len(gatheredEnv))
+		fmt.Fprintf(os.Stderr, "\nSend %d environment variable(s) to the Hub? [Y/n]: ", len(gatheredEnv))
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
@@ -908,9 +902,7 @@ func gatherAndSubmitEnv(ctx context.Context, hubCtx *HubContext, groveID string,
 		}
 	}
 
-	if !isJSONOutput() {
-		fmt.Printf("Submitting %d gathered environment variable(s)...\n", len(gatheredEnv))
-	}
+	statusf("Submitting %d gathered environment variable(s)...\n", len(gatheredEnv))
 
 	// Submit gathered env to Hub
 	submitResp, err := hubCtx.Client.GroveAgents(groveID).SubmitEnv(ctx, agentID, &hubclient.SubmitEnvRequest{
@@ -947,8 +939,8 @@ func printAutoResolvedBroker(ctx context.Context, hubCtx *HubContext, flagBroker
 		}
 	}
 	if brokerName != "" {
-		fmt.Printf("Using default broker %s\n", brokerName)
+		statusf("Using default broker %s\n", brokerName)
 	} else {
-		fmt.Printf("Using default broker %s\n", resp.Agent.RuntimeBrokerID)
+		statusf("Using default broker %s\n", resp.Agent.RuntimeBrokerID)
 	}
 }

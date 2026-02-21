@@ -55,7 +55,7 @@ var stopCmd = &cobra.Command{
 		rt := runtime.GetRuntime(grovePath, effectiveProfile)
 		mgr := agent.NewManager(rt)
 
-		fmt.Printf("Stopping agent '%s'...\n", agentName)
+		statusf("Stopping agent '%s'...\n", agentName)
 		if err := mgr.Stop(context.Background(), agentName); err != nil {
 			return err
 		}
@@ -75,7 +75,7 @@ var stopCmd = &cobra.Command{
 					Details: map[string]interface{}{"removed": true},
 				})
 			}
-			fmt.Printf("Agent '%s' stopped and removed.\n", agentName)
+			statusf("Agent '%s' stopped and removed.\n", agentName)
 		} else {
 			if isJSONOutput() {
 				return outputJSON(ActionResult{
@@ -85,7 +85,7 @@ var stopCmd = &cobra.Command{
 					Message: fmt.Sprintf("Agent '%s' stopped.", agentName),
 				})
 			}
-			fmt.Printf("Agent '%s' stopped.\n", agentName)
+			statusf("Agent '%s' stopped.\n", agentName)
 		}
 
 		return nil
@@ -93,10 +93,8 @@ var stopCmd = &cobra.Command{
 }
 
 func stopAgentViaHub(hubCtx *HubContext, agentName string) error {
-	if !isJSONOutput() {
-		PrintUsingHub(hubCtx.Endpoint)
-		fmt.Printf("Stopping agent '%s'...\n", agentName)
-	}
+	PrintUsingHub(hubCtx.Endpoint)
+	statusf("Stopping agent '%s'...\n", agentName)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -131,7 +129,7 @@ func stopAgentViaHub(hubCtx *HubContext, agentName string) error {
 				Details: map[string]interface{}{"removed": true, "hub": true},
 			})
 		}
-		fmt.Printf("Agent '%s' stopped and removed via Hub.\n", agentName)
+		statusf("Agent '%s' stopped and removed via Hub.\n", agentName)
 	} else {
 		if isJSONOutput() {
 			return outputJSON(ActionResult{
@@ -142,7 +140,7 @@ func stopAgentViaHub(hubCtx *HubContext, agentName string) error {
 				Details: map[string]interface{}{"hub": true},
 			})
 		}
-		fmt.Printf("Agent '%s' stopped via Hub.\n", agentName)
+		statusf("Agent '%s' stopped via Hub.\n", agentName)
 	}
 
 	return nil

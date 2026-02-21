@@ -104,7 +104,7 @@ var deleteCmd = &cobra.Command{
 					continue
 				}
 
-				fmt.Printf("Deleting stopped agent '%s' (status: %s)...\n", agentName, a.ContainerStatus)
+				statusf("Deleting stopped agent '%s' (status: %s)...\n", agentName, a.ContainerStatus)
 
 				targetGrovePath := a.GrovePath
 				if targetGrovePath == "" {
@@ -113,19 +113,19 @@ var deleteCmd = &cobra.Command{
 
 				branchDeleted, err := mgr.Delete(context.Background(), agentName, true, targetGrovePath, !preserveBranch)
 				if err != nil {
-					fmt.Printf("Failed to delete agent '%s': %v\n", agentName, err)
+					fmt.Fprintf(os.Stderr, "Failed to delete agent '%s': %v\n", agentName, err)
 					continue
 				}
 
 				if branchDeleted {
-					fmt.Printf("Git branch associated with agent '%s' deleted.\n", agentName)
+					statusf("Git branch associated with agent '%s' deleted.\n", agentName)
 				}
-				fmt.Printf("Agent '%s' deleted.\n", agentName)
+				statusf("Agent '%s' deleted.\n", agentName)
 				deletedCount++
 			}
 
 			if deletedCount == 0 {
-				fmt.Println("No stopped agents found.")
+				statusln("No stopped agents found.")
 			}
 			return nil
 		}
@@ -176,9 +176,7 @@ var deleteCmd = &cobra.Command{
 }
 
 func deleteAgentsViaHub(hubCtx *HubContext, agentNames []string) error {
-	if !isJSONOutput() {
-		PrintUsingHub(hubCtx.Endpoint)
-	}
+	PrintUsingHub(hubCtx.Endpoint)
 
 	opts := &hubclient.DeleteAgentOptions{
 		DeleteFiles:  true,
@@ -188,9 +186,7 @@ func deleteAgentsViaHub(hubCtx *HubContext, agentNames []string) error {
 	var errs []string
 	var results []map[string]interface{}
 	for _, agentName := range agentNames {
-		if !isJSONOutput() {
-			fmt.Printf("Deleting agent '%s'...\n", agentName)
-		}
+		statusf("Deleting agent '%s'...\n", agentName)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 
@@ -213,11 +209,11 @@ func deleteAgentsViaHub(hubCtx *HubContext, agentNames []string) error {
 		// The Hub dispatches container cleanup to the runtime broker, but local
 		// filesystem artifacts must be removed by the CLI to avoid orphaned agents.
 		branchDeleted, err := agent.DeleteAgentFiles(agentName, grovePath, !preserveBranch)
-		if err != nil && !isJSONOutput() {
-			fmt.Printf("Warning: Hub record deleted but local cleanup failed for '%s': %v\n", agentName, err)
+		if err != nil {
+			statusf("Warning: Hub record deleted but local cleanup failed for '%s': %v\n", agentName, err)
 		}
-		if branchDeleted && !isJSONOutput() {
-			fmt.Printf("Git branch associated with agent '%s' deleted.\n", agentName)
+		if branchDeleted {
+			statusf("Git branch associated with agent '%s' deleted.\n", agentName)
 		}
 
 		if isJSONOutput() {
@@ -226,7 +222,7 @@ func deleteAgentsViaHub(hubCtx *HubContext, agentNames []string) error {
 				"status": "success",
 			})
 		} else {
-			fmt.Printf("Agent '%s' deleted via Hub.\n", agentName)
+			statusf("Agent '%s' deleted via Hub.\n", agentName)
 		}
 	}
 

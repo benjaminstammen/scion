@@ -393,17 +393,17 @@ func handleUnlinkedGrovePrompt(cmd *cobra.Command, args []string) bool {
 	case hubsync.LinkOrDisableLink:
 		// Run the link command
 		if err := runHubLink(cmd, args); err != nil {
-			fmt.Printf("Failed to link grove: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to link grove: %v\n", err)
 			return false
 		}
 		return true
 	case hubsync.LinkOrDisableDisable:
 		// Disable Hub for this grove
 		if err := config.UpdateSetting(resolvedPath, "hub.enabled", "false", isGlobal); err != nil {
-			fmt.Printf("Failed to disable Hub: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to disable Hub: %v\n", err)
 			return false
 		}
-		fmt.Println("Hub integration disabled for this grove.")
+		statusln("Hub integration disabled for this grove.")
 		return true
 	default:
 		return false

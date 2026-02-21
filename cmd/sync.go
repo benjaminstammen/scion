@@ -112,7 +112,7 @@ func init() {
 
 // syncViaHub performs workspace sync using Hub API.
 func syncViaHub(hubCtx *HubContext, agentName string, direction runtime.SyncDirection) error {
-	PrintUsingHub(hubCtx.Endpoint)
+	PrintUsingHub(hubCtx.Endpoint) // writes to stderr
 
 	// Get the grove ID
 	groveID, err := GetGroveID(hubCtx)
@@ -147,7 +147,7 @@ func syncViaHub(hubCtx *HubContext, agentName string, direction runtime.SyncDire
 
 // syncFromViaHub downloads workspace from agent to local directory.
 func syncFromViaHub(hubCtx *HubContext, agentID, agentName, localPath string) error {
-	fmt.Printf("Requesting workspace sync from agent '%s'...\n", agentName)
+	statusf("Requesting workspace sync from agent '%s'...\n", agentName)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -167,7 +167,7 @@ func syncFromViaHub(hubCtx *HubContext, agentID, agentName, localPath string) er
 	}
 
 	if resp.Manifest == nil || len(resp.Manifest.Files) == 0 {
-		fmt.Println("Workspace is empty, nothing to sync.")
+		statusln("Workspace is empty, nothing to sync.")
 		return nil
 	}
 
@@ -201,26 +201,26 @@ func syncFromViaHub(hubCtx *HubContext, agentID, agentName, localPath string) er
 
 	// Report what will be synced
 	if syncDryRun {
-		fmt.Printf("Would download %d files (%s):\n", len(toDownload), humanize.Bytes(uint64(downloadSize)))
+		statusf("Would download %d files (%s):\n", len(toDownload), humanize.Bytes(uint64(downloadSize)))
 		for _, url := range toDownload {
 			status := "(new)"
 			if _, exists := localHashes[url.Path]; exists {
 				status = "(modified)"
 			}
-			fmt.Printf("  %s %s\n", url.Path, status)
+			statusf("  %s %s\n", url.Path, status)
 		}
 		if skipCount > 0 {
-			fmt.Printf("Would skip %d unchanged files\n", skipCount)
+			statusf("Would skip %d unchanged files\n", skipCount)
 		}
 		return nil
 	}
 
 	if len(toDownload) == 0 {
-		fmt.Println("Workspace is up to date, nothing to sync.")
+		statusln("Workspace is up to date, nothing to sync.")
 		return nil
 	}
 
-	fmt.Printf("Downloading %d files (%s)...\n", len(toDownload), humanize.Bytes(uint64(downloadSize)))
+	statusf("Downloading %d files (%s)...\n", len(toDownload), humanize.Bytes(uint64(downloadSize)))
 
 	// Create transfer client and download files
 	transferClient := transfer.NewClient(nil)
@@ -231,7 +231,7 @@ func syncFromViaHub(hubCtx *HubContext, agentID, agentName, localPath string) er
 	progress := func(file transfer.FileInfo, bytesTransferred int64) error {
 		downloadedCount++
 		downloadedBytes += bytesTransferred
-		fmt.Printf("  %s (%s) done\n", file.Path, humanize.Bytes(uint64(file.Size)))
+		statusf("  %s (%s) done\n", file.Path, humanize.Bytes(uint64(file.Size)))
 		return nil
 	}
 
@@ -251,9 +251,9 @@ func syncFromViaHub(hubCtx *HubContext, agentID, agentName, localPath string) er
 		})
 	}
 
-	fmt.Printf("Sync complete: %d files, %s transferred\n", downloadedCount, humanize.Bytes(uint64(downloadedBytes)))
+	statusf("Sync complete: %d files, %s transferred\n", downloadedCount, humanize.Bytes(uint64(downloadedBytes)))
 	if skipCount > 0 {
-		fmt.Printf("Skipped %d unchanged files\n", skipCount)
+		statusf("Skipped %d unchanged files\n", skipCount)
 	}
 
 	return nil
@@ -261,7 +261,7 @@ func syncFromViaHub(hubCtx *HubContext, agentID, agentName, localPath string) er
 
 // syncToViaHub uploads workspace from local directory to agent.
 func syncToViaHub(hubCtx *HubContext, agentID, agentName, localPath string) error {
-	fmt.Printf("Scanning local workspace...\n")
+	statusf("Scanning local workspace...\n")
 
 	// Collect local files
 	excludePatterns := append([]string{}, transfer.DefaultExcludePatterns...)
@@ -273,7 +273,7 @@ func syncToViaHub(hubCtx *HubContext, agentID, agentName, localPath string) erro
 	}
 
 	if len(localFiles) == 0 {
-		fmt.Println("No files to sync.")
+		statusln("No files to sync.")
 		return nil
 	}
 
@@ -304,28 +304,28 @@ func syncToViaHub(hubCtx *HubContext, agentID, agentName, localPath string) erro
 
 	// Report what will be synced
 	if syncDryRun {
-		fmt.Printf("Would upload %d changed files (%s):\n", len(toUpload), humanize.Bytes(uint64(uploadSize)))
+		statusf("Would upload %d changed files (%s):\n", len(toUpload), humanize.Bytes(uint64(uploadSize)))
 		for _, file := range toUpload {
-			fmt.Printf("  %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
+			statusf("  %s (%s)\n", file.Path, humanize.Bytes(uint64(file.Size)))
 		}
 		if len(resp.ExistingFiles) > 0 {
-			fmt.Printf("Would skip %d unchanged files\n", len(resp.ExistingFiles))
+			statusf("Would skip %d unchanged files\n", len(resp.ExistingFiles))
 		}
 		return nil
 	}
 
 	if len(toUpload) == 0 {
-		fmt.Println("All files are up to date on remote, nothing to upload.")
+		statusln("All files are up to date on remote, nothing to upload.")
 		// Still need to finalize to apply the manifest to the agent
 		manifest := transfer.BuildManifest(localFiles)
 		if _, err := hubCtx.Client.Workspace().FinalizeSyncTo(ctx, agentID, manifest); err != nil {
 			return wrapHubError(fmt.Errorf("failed to finalize sync: %w", err))
 		}
-		fmt.Println("Workspace sync applied to agent.")
+		statusln("Workspace sync applied to agent.")
 		return nil
 	}
 
-	fmt.Printf("Uploading %d files (%s)...\n", len(toUpload), humanize.Bytes(uint64(uploadSize)))
+	statusf("Uploading %d files (%s)...\n", len(toUpload), humanize.Bytes(uint64(uploadSize)))
 
 	// Create transfer client and upload files
 	transferClient := transfer.NewClient(nil)
@@ -336,7 +336,7 @@ func syncToViaHub(hubCtx *HubContext, agentID, agentName, localPath string) erro
 	progress := func(file transfer.FileInfo, bytesTransferred int64) error {
 		uploadedCount++
 		uploadedBytes += bytesTransferred
-		fmt.Printf("  %s (%s) done\n", file.Path, humanize.Bytes(uint64(file.Size)))
+		statusf("  %s (%s) done\n", file.Path, humanize.Bytes(uint64(file.Size)))
 		return nil
 	}
 
@@ -345,7 +345,7 @@ func syncToViaHub(hubCtx *HubContext, agentID, agentName, localPath string) erro
 	}
 
 	// Finalize the sync
-	fmt.Println("Applying workspace to agent...")
+	statusln("Applying workspace to agent...")
 	manifest := transfer.BuildManifest(localFiles)
 	finalizeResp, err := hubCtx.Client.Workspace().FinalizeSyncTo(ctx, agentID, manifest)
 	if err != nil {
@@ -365,12 +365,12 @@ func syncToViaHub(hubCtx *HubContext, agentID, agentName, localPath string) erro
 		})
 	}
 
-	fmt.Printf("Sync complete: %d files uploaded, %s transferred\n", uploadedCount, humanize.Bytes(uint64(uploadedBytes)))
+	statusf("Sync complete: %d files uploaded, %s transferred\n", uploadedCount, humanize.Bytes(uint64(uploadedBytes)))
 	if len(resp.ExistingFiles) > 0 {
-		fmt.Printf("Skipped %d unchanged files\n", len(resp.ExistingFiles))
+		statusf("Skipped %d unchanged files\n", len(resp.ExistingFiles))
 	}
 	if finalizeResp.Applied {
-		fmt.Printf("Applied %d files to agent workspace\n", finalizeResp.FilesApplied)
+		statusf("Applied %d files to agent workspace\n", finalizeResp.FilesApplied)
 	}
 
 	return nil

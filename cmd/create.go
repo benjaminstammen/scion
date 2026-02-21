@@ -17,6 +17,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -84,7 +85,7 @@ arguments are provided, an empty prompt.md is created for later editing.`,
 		if err == nil {
 			for _, a := range agents {
 				if a.ID == agentName || a.Name == agentName {
-					fmt.Printf("Agent container '%s' already exists (Status: %s).\n", agentName, a.Status)
+					fmt.Fprintf(os.Stderr, "Agent container '%s' already exists (Status: %s).\n", agentName, a.Status)
 					// We continue to check directory
 				}
 			}
@@ -173,9 +174,7 @@ func createAgentViaHub(hubCtx *HubContext, agentName string, task string) error 
 	}
 
 	// Print info line when broker was auto-resolved (not explicitly specified)
-	if !isJSONOutput() {
-		printAutoResolvedBroker(ctx, hubCtx, runtimeBrokerID, req.RuntimeBrokerID, resp)
-	}
+	printAutoResolvedBroker(ctx, hubCtx, runtimeBrokerID, req.RuntimeBrokerID, resp)
 
 	if isJSONOutput() {
 		result := ActionResult{
@@ -206,20 +205,20 @@ func createAgentViaHub(hubCtx *HubContext, agentName string, task string) error 
 		} else if resp.Agent.RuntimeBrokerID != "" {
 			brokerInfo = fmt.Sprintf(" on broker %s", resp.Agent.RuntimeBrokerID)
 		}
-		fmt.Printf("Agent '%s' created via Hub%s.\n", agentName, brokerInfo)
-		fmt.Printf("Agent Slug: %s\n", resp.Agent.Slug)
-		fmt.Printf("Status: %s\n", resp.Agent.Status)
+		statusf("Agent '%s' created via Hub%s.\n", agentName, brokerInfo)
+		statusf("Agent Slug: %s\n", resp.Agent.Slug)
+		statusf("Status: %s\n", resp.Agent.Status)
 
 		// For local broker, print the agent directory path so the user can inspect/tweak files
 		if hubCtx.BrokerID != "" && hubCtx.GrovePath != "" {
 			agentDir := filepath.Join(hubCtx.GrovePath, "agents", agentName)
-			fmt.Printf("Agent directory: %s\n", agentDir)
+			statusf("Agent directory: %s\n", agentDir)
 		}
 	} else {
-		fmt.Printf("Agent '%s' created via Hub.\n", agentName)
+		statusf("Agent '%s' created via Hub.\n", agentName)
 	}
 	for _, w := range resp.Warnings {
-		fmt.Printf("Warning: %s\n", w)
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
 
 	return nil

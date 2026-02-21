@@ -25,6 +25,26 @@ func isJSONOutput() bool {
 	return outputFormat == "json"
 }
 
+// statusf prints an informational/progress message to stderr.
+// This keeps stdout clean for structured output (JSON, tabwriter, etc.)
+// while still showing progress to the user in their terminal.
+// When --format json is active, the message is suppressed entirely.
+func statusf(format string, a ...interface{}) {
+	if isJSONOutput() {
+		return
+	}
+	fmt.Fprintf(os.Stderr, format, a...)
+}
+
+// statusln prints an informational/progress line to stderr.
+// See statusf for details.
+func statusln(a ...interface{}) {
+	if isJSONOutput() {
+		return
+	}
+	fmt.Fprintln(os.Stderr, a...)
+}
+
 // outputJSON pretty-prints a value as JSON to stdout.
 func outputJSON(v interface{}) error {
 	enc := json.NewEncoder(os.Stdout)
@@ -51,7 +71,7 @@ func outputActionResult(r ActionResult) error {
 		fmt.Println(r.Message)
 	}
 	for _, w := range r.Warnings {
-		fmt.Printf("Warning: %s\n", w)
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
 	return nil
 }
