@@ -450,7 +450,11 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to create broker registration: %w", err)
 		}
 
-		fmt.Printf("Broker created (ID: %s), completing join...\n", createResp.BrokerID)
+		if createResp.Reregistered {
+			fmt.Printf("Found existing broker registration for '%s' (ID: %s), re-registering...\n", brokerName, createResp.BrokerID)
+		} else {
+			fmt.Printf("Broker created (ID: %s), completing join...\n", createResp.BrokerID)
+		}
 
 		// Build profiles from settings to send to Hub
 		profiles := buildBrokerProfiles(settings)

@@ -171,9 +171,10 @@ type CreateBrokerRegistrationRequest struct {
 
 // CreateBrokerRegistrationResponse is the response for POST /api/v1/brokers.
 type CreateBrokerRegistrationResponse struct {
-	BrokerID string    `json:"brokerId"`
-	JoinToken string    `json:"joinToken"` // scion_join_<base64>
-	ExpiresAt time.Time `json:"expiresAt"`
+	BrokerID     string    `json:"brokerId"`
+	JoinToken    string    `json:"joinToken"` // scion_join_<base64>
+	ExpiresAt    time.Time `json:"expiresAt"`
+	Reregistered bool      `json:"reregistered,omitempty"`
 }
 
 // BrokerJoinRequest is the request body for POST /api/v1/brokers/join.
@@ -203,24 +204,44 @@ func (s *BrokerAuthService) CreateBrokerRegistration(ctx context.Context, req Cr
 		return nil, errors.New("name is required")
 	}
 
-	// Generate broker ID
-	brokerID := uuid.New().String()
+	// Before generating a new broker ID, check for an existing broker with same name
+	var brokerID string
+	var reregistered bool
 
-	// Create the runtime broker record
-	broker := &store.RuntimeBroker{
-		ID:          brokerID,
-		Name:        req.Name,
-		Slug:        slugify(req.Name),
-		Status:      store.BrokerStatusOffline,
-		AutoProvide: req.AutoProvide,
-		Labels:      req.Labels,
-		Created:     time.Now(),
-		Updated:     time.Now(),
-		CreatedBy:   createdBy,
+	existingBroker, err := s.store.GetRuntimeBrokerByName(ctx, req.Name)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, fmt.Errorf("failed to check existing broker: %w", err)
 	}
 
-	if err := s.store.CreateRuntimeBroker(ctx, broker); err != nil {
-		return nil, fmt.Errorf("failed to create runtime broker: %w", err)
+	if existingBroker != nil {
+		// Reuse existing broker - update its metadata
+		brokerID = existingBroker.ID
+		reregistered = true
+		existingBroker.AutoProvide = req.AutoProvide
+		existingBroker.Labels = req.Labels
+		existingBroker.Updated = time.Now()
+		if err := s.store.UpdateRuntimeBroker(ctx, existingBroker); err != nil {
+			return nil, fmt.Errorf("failed to update existing broker: %w", err)
+		}
+	} else {
+		// Create new broker
+		brokerID = uuid.New().String()
+
+		broker := &store.RuntimeBroker{
+			ID:          brokerID,
+			Name:        req.Name,
+			Slug:        slugify(req.Name),
+			Status:      store.BrokerStatusOffline,
+			AutoProvide: req.AutoProvide,
+			Labels:      req.Labels,
+			Created:     time.Now(),
+			Updated:     time.Now(),
+			CreatedBy:   createdBy,
+		}
+
+		if err := s.store.CreateRuntimeBroker(ctx, broker); err != nil {
+			return nil, fmt.Errorf("failed to create runtime broker: %w", err)
+		}
 	}
 
 	// Generate join token
@@ -246,15 +267,18 @@ func (s *BrokerAuthService) CreateBrokerRegistration(ctx context.Context, req Cr
 	}
 
 	if err := s.store.CreateJoinToken(ctx, joinTokenRecord); err != nil {
-		// Clean up the broker record on failure
-		_ = s.store.DeleteRuntimeBroker(ctx, brokerID)
+		// Clean up the broker record on failure (only if we just created it)
+		if !reregistered {
+			_ = s.store.DeleteRuntimeBroker(ctx, brokerID)
+		}
 		return nil, fmt.Errorf("failed to create join token: %w", err)
 	}
 
 	return &CreateBrokerRegistrationResponse{
-		BrokerID:    brokerID,
-		JoinToken: joinToken,
-		ExpiresAt: expiresAt,
+		BrokerID:     brokerID,
+		JoinToken:    joinToken,
+		ExpiresAt:    expiresAt,
+		Reregistered: reregistered,
 	}, nil
 }
 
@@ -297,6 +321,9 @@ func (s *BrokerAuthService) CompleteBrokerJoin(ctx context.Context, req BrokerJo
 	if _, err := rand.Read(secretKey); err != nil {
 		return nil, fmt.Errorf("failed to generate secret key: %w", err)
 	}
+
+	// Delete any existing secret for this broker (re-registration case)
+	_ = s.store.DeleteBrokerSecret(ctx, req.BrokerID)
 
 	// Store the broker secret
 	brokerSecret := &store.BrokerSecret{

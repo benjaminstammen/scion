@@ -717,3 +717,192 @@ func TestGenerateAndStoreSecret_CanBeUsedForHMACAuth(t *testing.T) {
 		t.Errorf("BrokerID mismatch: got %s, want %s", identity.BrokerID(), brokerID)
 	}
 }
+
+// TestBrokerReregistrationByName tests that registering a broker with the same name
+// reuses the existing broker record instead of creating a duplicate.
+func TestBrokerReregistrationByName(t *testing.T) {
+	svc, _ := setupTestBrokerAuthService(t)
+	ctx := context.Background()
+
+	// First registration
+	req := CreateBrokerRegistrationRequest{
+		Name: "test-host",
+		Labels: map[string]string{
+			"env": "test",
+		},
+	}
+
+	resp1, err := svc.CreateBrokerRegistration(ctx, req, "admin-user-id")
+	if err != nil {
+		t.Fatalf("First CreateBrokerRegistration failed: %v", err)
+	}
+	if resp1.Reregistered {
+		t.Error("First registration should not be marked as reregistered")
+	}
+
+	// Complete the first join
+	joinReq1 := BrokerJoinRequest{
+		BrokerID:  resp1.BrokerID,
+		JoinToken: resp1.JoinToken,
+		Hostname:  "test-hostname",
+		Version:   "1.0.0",
+	}
+
+	joinResp1, err := svc.CompleteBrokerJoin(ctx, joinReq1, "http://localhost:9810")
+	if err != nil {
+		t.Fatalf("First CompleteBrokerJoin failed: %v", err)
+	}
+	if joinResp1.SecretKey == "" {
+		t.Error("First join should return a secret key")
+	}
+
+	// Second registration with same name (simulates lost credentials)
+	req2 := CreateBrokerRegistrationRequest{
+		Name: "test-host",
+		Labels: map[string]string{
+			"env": "production",
+		},
+	}
+
+	resp2, err := svc.CreateBrokerRegistration(ctx, req2, "admin-user-id")
+	if err != nil {
+		t.Fatalf("Second CreateBrokerRegistration failed: %v", err)
+	}
+
+	// Should reuse the same broker ID
+	if resp2.BrokerID != resp1.BrokerID {
+		t.Errorf("Expected same broker ID on re-registration, got %s (first: %s)", resp2.BrokerID, resp1.BrokerID)
+	}
+
+	// Should be marked as re-registered
+	if !resp2.Reregistered {
+		t.Error("Second registration should be marked as reregistered")
+	}
+
+	// Should have a valid join token
+	if resp2.JoinToken == "" {
+		t.Error("Re-registration should return a join token")
+	}
+
+	// Complete the second join - should succeed with new secret
+	joinReq2 := BrokerJoinRequest{
+		BrokerID:  resp2.BrokerID,
+		JoinToken: resp2.JoinToken,
+		Hostname:  "test-hostname",
+		Version:   "2.0.0",
+	}
+
+	joinResp2, err := svc.CompleteBrokerJoin(ctx, joinReq2, "http://localhost:9810")
+	if err != nil {
+		t.Fatalf("Second CompleteBrokerJoin failed: %v", err)
+	}
+
+	if joinResp2.BrokerID != resp1.BrokerID {
+		t.Errorf("Join response broker ID mismatch: got %s, want %s", joinResp2.BrokerID, resp1.BrokerID)
+	}
+	if joinResp2.SecretKey == "" {
+		t.Error("Second join should return a secret key")
+	}
+}
+
+// TestBrokerReregistrationNewSecret tests that re-registering a broker replaces
+// the old HMAC secret with a new one that works for authentication.
+func TestBrokerReregistrationNewSecret(t *testing.T) {
+	svc, _ := setupTestBrokerAuthService(t)
+	ctx := context.Background()
+
+	// First registration + join
+	req := CreateBrokerRegistrationRequest{Name: "test-host"}
+	resp1, err := svc.CreateBrokerRegistration(ctx, req, "admin")
+	if err != nil {
+		t.Fatalf("First CreateBrokerRegistration failed: %v", err)
+	}
+
+	joinResp1, err := svc.CompleteBrokerJoin(ctx, BrokerJoinRequest{
+		BrokerID:  resp1.BrokerID,
+		JoinToken: resp1.JoinToken,
+		Hostname:  "test-hostname",
+		Version:   "1.0.0",
+	}, "http://localhost:9810")
+	if err != nil {
+		t.Fatalf("First CompleteBrokerJoin failed: %v", err)
+	}
+
+	oldSecretB64 := joinResp1.SecretKey
+
+	// Re-register with same name
+	resp2, err := svc.CreateBrokerRegistration(ctx, req, "admin")
+	if err != nil {
+		t.Fatalf("Second CreateBrokerRegistration failed: %v", err)
+	}
+
+	// Complete second join - gets new secret
+	joinResp2, err := svc.CompleteBrokerJoin(ctx, BrokerJoinRequest{
+		BrokerID:  resp2.BrokerID,
+		JoinToken: resp2.JoinToken,
+		Hostname:  "test-hostname",
+		Version:   "2.0.0",
+	}, "http://localhost:9810")
+	if err != nil {
+		t.Fatalf("Second CompleteBrokerJoin failed: %v", err)
+	}
+
+	newSecretB64 := joinResp2.SecretKey
+
+	// New secret should be different from old secret
+	if oldSecretB64 == newSecretB64 {
+		t.Error("Expected new secret to be different from old secret")
+	}
+
+	// New secret should work for HMAC authentication
+	newSecret, err := base64.StdEncoding.DecodeString(newSecretB64)
+	if err != nil {
+		t.Fatalf("Failed to decode new secret: %v", err)
+	}
+
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce := "test-nonce-reregistration"
+
+	httpReq := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	httpReq.Header.Set(HeaderBrokerID, resp2.BrokerID)
+	httpReq.Header.Set(HeaderTimestamp, timestamp)
+	httpReq.Header.Set(HeaderNonce, nonce)
+
+	canonicalString := svc.buildCanonicalString(httpReq, timestamp, nonce)
+	h := hmac.New(sha256.New, newSecret)
+	h.Write(canonicalString)
+	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	httpReq.Header.Set(HeaderSignature, signature)
+
+	identity, err := svc.ValidateBrokerSignature(ctx, httpReq)
+	if err != nil {
+		t.Fatalf("ValidateBrokerSignature with new secret failed: %v", err)
+	}
+	if identity.BrokerID() != resp2.BrokerID {
+		t.Errorf("BrokerID mismatch: got %s, want %s", identity.BrokerID(), resp2.BrokerID)
+	}
+
+	// Old secret should NOT work for authentication
+	oldSecret, err := base64.StdEncoding.DecodeString(oldSecretB64)
+	if err != nil {
+		t.Fatalf("Failed to decode old secret: %v", err)
+	}
+
+	httpReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	httpReq2.Header.Set(HeaderBrokerID, resp2.BrokerID)
+	timestamp2 := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce2 := "test-nonce-old-secret"
+	httpReq2.Header.Set(HeaderTimestamp, timestamp2)
+	httpReq2.Header.Set(HeaderNonce, nonce2)
+
+	canonicalString2 := svc.buildCanonicalString(httpReq2, timestamp2, nonce2)
+	h2 := hmac.New(sha256.New, oldSecret)
+	h2.Write(canonicalString2)
+	signature2 := base64.StdEncoding.EncodeToString(h2.Sum(nil))
+	httpReq2.Header.Set(HeaderSignature, signature2)
+
+	_, err = svc.ValidateBrokerSignature(ctx, httpReq2)
+	if err == nil {
+		t.Error("Expected old secret to fail authentication after re-registration")
+	}
+}

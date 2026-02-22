@@ -111,9 +111,10 @@ type CreateBrokerRequest struct {
 
 // CreateBrokerResponse is returned when creating a new broker.
 type CreateBrokerResponse struct {
-	BrokerID string `json:"brokerId"`
-	JoinToken string `json:"joinToken"`
-	ExpiresAt string `json:"expiresAt"`
+	BrokerID     string `json:"brokerId"`
+	JoinToken    string `json:"joinToken"`
+	ExpiresAt    string `json:"expiresAt"`
+	Reregistered bool   `json:"reregistered,omitempty"`
 }
 
 // JoinBrokerRequest is the request to complete broker registration.
