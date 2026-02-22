@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/ptone/scion-agent/pkg/hubclient"
@@ -56,6 +57,7 @@ type sentMessage struct {
 func newMessageMockHubServer(t *testing.T, groveID string, runningAgents []hubclient.Agent) (*httptest.Server, *[]sentMessage) {
 	t.Helper()
 	var sent []sentMessage
+	var mu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -92,11 +94,13 @@ func newMessageMockHubServer(t *testing.T, groveID string, runningAgents []hubcl
 			}
 			json.NewDecoder(r.Body).Decode(&body)
 
+			mu.Lock()
 			sent = append(sent, sentMessage{
 				AgentName: agentName,
 				Message:   body.Message,
 				Interrupt: body.Interrupt,
 			})
+			mu.Unlock()
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
 
@@ -185,12 +189,12 @@ func TestSendMessageViaHub_Broadcast(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, *sent, 3)
-	assert.Equal(t, "agent-1", (*sent)[0].AgentName)
-	assert.Equal(t, "agent-2", (*sent)[1].AgentName)
-	assert.Equal(t, "agent-3", (*sent)[2].AgentName)
-	for _, s := range *sent {
+	names := make([]string, len(*sent))
+	for i, s := range *sent {
+		names[i] = s.AgentName
 		assert.Equal(t, "broadcast msg", s.Message)
 	}
+	assert.ElementsMatch(t, []string{"agent-1", "agent-2", "agent-3"}, names)
 }
 
 func TestSendMessageViaHub_BroadcastNoAgents(t *testing.T) {
@@ -294,6 +298,7 @@ func TestSendMessageViaHub_BroadcastPartialFailure(t *testing.T) {
 	}
 
 	var sent []sentMessage
+	var mu sync.Mutex
 	// Server that succeeds for good-agent but fails for bad-agent
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -321,7 +326,9 @@ func TestSendMessageViaHub_BroadcastPartialFailure(t *testing.T) {
 				Interrupt bool   `json:"interrupt"`
 			}
 			json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
 			sent = append(sent, sentMessage{AgentName: agentName, Message: body.Message})
+			mu.Unlock()
 
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})

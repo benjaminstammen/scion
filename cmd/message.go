@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
@@ -122,14 +123,31 @@ If --broadcast is used, the agent name can be omitted and the message will be se
 			return fmt.Errorf("agent '%s' not found or not running", agentName)
 		}
 
-		for _, target := range targets {
-			fmt.Printf("Sending message to agent '%s'...\n", target)
-			if err := mgr.Message(ctx, target, message, msgInterrupt); err != nil {
-				if msgBroadcast || msgAll {
-					fmt.Printf("Warning: failed to send message to agent '%s': %s\n", target, err)
-					continue
+		if len(targets) > 1 {
+			fmt.Printf("Broadcasting message to %d agents...\n", len(targets))
+			var wg sync.WaitGroup
+			for _, target := range targets {
+				wg.Add(1)
+				go func(name string) {
+					defer wg.Done()
+					if err := mgr.Message(ctx, name, message, msgInterrupt); err != nil {
+						fmt.Printf("Warning: failed to send message to agent '%s': %s\n", name, err)
+						return
+					}
+					fmt.Printf("Message delivered to agent '%s'.\n", name)
+				}(target)
+			}
+			wg.Wait()
+		} else {
+			for _, target := range targets {
+				fmt.Printf("Sending message to agent '%s'...\n", target)
+				if err := mgr.Message(ctx, target, message, msgInterrupt); err != nil {
+					if msgBroadcast || msgAll {
+						fmt.Printf("Warning: failed to send message to agent '%s': %s\n", target, err)
+						continue
+					}
+					return err
 				}
-				return err
 			}
 		}
 
@@ -182,25 +200,48 @@ func sendMessageViaHub(hubCtx *HubContext, agentName string, message string, int
 		targets = []string{agentName}
 	}
 
-	for _, target := range targets {
+	if len(targets) > 1 {
 		if !isJSONOutput() {
-			fmt.Printf("Sending message to agent '%s'...\n", target)
+			fmt.Printf("Broadcasting message to %d agents...\n", len(targets))
 		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
-		if err := agentSvc.SendMessage(ctx, target, message, interrupt); err != nil {
-			cancel()
-			if broadcast || all {
-				fmt.Printf("Warning: failed to send message to agent '%s' via Hub: %s\n", target, err)
-				continue
+		var wg sync.WaitGroup
+		for _, target := range targets {
+			wg.Add(1)
+			go func(name string) {
+				defer wg.Done()
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := agentSvc.SendMessage(ctx, name, message, interrupt); err != nil {
+					fmt.Printf("Warning: failed to send message to agent '%s' via Hub: %s\n", name, err)
+					return
+				}
+				if !isJSONOutput() {
+					fmt.Printf("Message delivered to agent '%s' via Hub.\n", name)
+				}
+			}(target)
+		}
+		wg.Wait()
+	} else {
+		for _, target := range targets {
+			if !isJSONOutput() {
+				fmt.Printf("Sending message to agent '%s'...\n", target)
 			}
-			return wrapHubError(fmt.Errorf("failed to send message to agent '%s' via Hub: %w", target, err))
-		}
-		cancel()
 
-		if !isJSONOutput() {
-			fmt.Printf("Message sent to agent '%s' via Hub.\n", target)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+			if err := agentSvc.SendMessage(ctx, target, message, interrupt); err != nil {
+				cancel()
+				if broadcast || all {
+					fmt.Printf("Warning: failed to send message to agent '%s' via Hub: %s\n", target, err)
+					continue
+				}
+				return wrapHubError(fmt.Errorf("failed to send message to agent '%s' via Hub: %w", target, err))
+			}
+			cancel()
+
+			if !isJSONOutput() {
+				fmt.Printf("Message sent to agent '%s' via Hub.\n", target)
+			}
 		}
 	}
 
