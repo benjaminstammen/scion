@@ -601,12 +601,12 @@ User: scion start researcher --broker prod-gke "analyze auth module"
 
 ## 9. Implementation Plan
 
-### Phase 1: Auto-Upgrade (Required Env Var → Secret)
+### Phase 1: Auto-Upgrade (Required Env Var → Secret) — **Completed**
 
-1. Modify Broker `createAgent()` in `pkg/runtimebroker/handlers.go` to check `ResolvedSecrets` during env completeness evaluation
-2. Add `"secret"` as a scope value in `EnvSource` responses
-3. Update CLI display to show "Hub provides: ANTHROPIC_API_KEY (secret)"
-4. Add tests to `handlers_envgather_test.go` and `envgather_test.go`
+1. ~~Modify Broker `createAgent()` in `pkg/runtimebroker/handlers.go` to check `ResolvedSecrets` during env completeness evaluation~~
+2. ~~Add `"secret"` as a scope value in `EnvSource` responses~~
+3. ~~Update CLI display to show "Hub provides: ANTHROPIC_API_KEY (secret)"~~ (no CLI changes needed — existing `EnvSource.Scope` display handles `"secret"` automatically)
+4. ~~Add tests to `handlers_envgather_test.go` and `envgather_test.go`~~
 
 ### Phase 2: Template/Settings `secrets` Section
 
