@@ -203,6 +203,20 @@ func ResolveGrovePath(path string) (string, bool, error) {
 		return "", false, err
 	}
 
+	// If the path doesn't end with .scion, check if it contains a .scion subdirectory.
+	// This allows users to pass a project root (e.g. /path/to/project) and have it
+	// resolve to /path/to/project/.scion, matching how FindProjectRoot discovers groves.
+	if filepath.Base(abs) != DotScion {
+		candidate := filepath.Join(abs, DotScion)
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			if evaluated, err := filepath.EvalSymlinks(candidate); err == nil {
+				abs = evaluated
+			} else {
+				abs = candidate
+			}
+		}
+	}
+
 	isGlobal := abs == globalDir
 
 	return abs, isGlobal, nil
@@ -225,6 +239,17 @@ func RequireGrovePath(path string) (string, bool, error) {
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			return "", false, err
+		}
+		// If the path doesn't end with .scion, check if it contains a .scion subdirectory.
+		if filepath.Base(abs) != DotScion {
+			candidate := filepath.Join(abs, DotScion)
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				if evaluated, err := filepath.EvalSymlinks(candidate); err == nil {
+					abs = evaluated
+				} else {
+					abs = candidate
+				}
+			}
 		}
 		isGlobal := abs == globalDir
 		return abs, isGlobal, nil
