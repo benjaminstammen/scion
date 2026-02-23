@@ -103,6 +103,7 @@ type AgentHeartbeat struct {
 
 // CreateBrokerRequest is the request to create a new broker registration.
 type CreateBrokerRequest struct {
+	BrokerID     string            `json:"brokerId,omitempty"` // Optional stable broker UUID supplied by the client
 	Name         string            `json:"name"`
 	Capabilities []string          `json:"capabilities,omitempty"`
 	Labels       map[string]string `json:"labels,omitempty"`

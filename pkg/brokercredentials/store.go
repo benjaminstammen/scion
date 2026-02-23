@@ -36,6 +36,18 @@ const (
 	DirMode = 0700
 )
 
+// AuthMode represents the authentication mode used for a hub connection.
+type AuthMode string
+
+const (
+	// AuthModeHMAC is the standard HMAC-based authentication mode.
+	AuthModeHMAC AuthMode = "hmac"
+	// AuthModeDevAuth is the development authentication mode (no signature verification).
+	AuthModeDevAuth AuthMode = "dev-auth"
+	// AuthModeBearer is bearer token authentication mode.
+	AuthModeBearer AuthMode = "bearer"
+)
+
 var (
 	// ErrNotFound is returned when no credentials are found.
 	ErrNotFound = errors.New("broker credentials not found")
@@ -45,12 +57,16 @@ var (
 
 // BrokerCredentials contains the credentials for a Runtime Broker.
 type BrokerCredentials struct {
+	// Name is the human-readable name for this hub connection (used as filename in MultiStore).
+	Name string `json:"name,omitempty"`
 	// BrokerID is the unique identifier for this broker.
 	BrokerID string `json:"brokerId"`
 	// SecretKey is the base64-encoded shared secret for HMAC authentication.
 	SecretKey string `json:"secretKey"`
 	// HubEndpoint is the URL of the Hub API.
 	HubEndpoint string `json:"hubEndpoint"`
+	// AuthMode is the authentication mode used for this hub connection.
+	AuthMode AuthMode `json:"authMode,omitempty"`
 	// RegisteredAt is when this broker was registered with the Hub.
 	RegisteredAt time.Time `json:"registeredAt"`
 }

@@ -163,6 +163,7 @@ func (bas *BrokerAuthService) Close() {
 
 // CreateBrokerRegistrationRequest is the request body for POST /api/v1/brokers.
 type CreateBrokerRegistrationRequest struct {
+	BrokerID     string            `json:"brokerId,omitempty"` // Optional stable broker UUID supplied by the client
 	Name         string            `json:"name"`
 	AutoProvide  bool              `json:"autoProvide,omitempty"`
 	Capabilities []string          `json:"capabilities,omitempty"`
@@ -213,6 +214,17 @@ func (s *BrokerAuthService) CreateBrokerRegistration(ctx context.Context, req Cr
 		return nil, fmt.Errorf("failed to check existing broker: %w", err)
 	}
 
+	// Also check for re-registration by client-supplied BrokerID
+	if existingBroker == nil && req.BrokerID != "" {
+		existingByID, err := s.store.GetRuntimeBroker(ctx, req.BrokerID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return nil, fmt.Errorf("failed to check existing broker by ID: %w", err)
+		}
+		if existingByID != nil {
+			existingBroker = existingByID
+		}
+	}
+
 	if existingBroker != nil {
 		// Reuse existing broker - update its metadata
 		brokerID = existingBroker.ID
@@ -224,8 +236,12 @@ func (s *BrokerAuthService) CreateBrokerRegistration(ctx context.Context, req Cr
 			return nil, fmt.Errorf("failed to update existing broker: %w", err)
 		}
 	} else {
-		// Create new broker
-		brokerID = uuid.New().String()
+		// Create new broker - use client-supplied ID if provided, otherwise generate
+		if req.BrokerID != "" {
+			brokerID = req.BrokerID
+		} else {
+			brokerID = uuid.New().String()
+		}
 
 		broker := &store.RuntimeBroker{
 			ID:          brokerID,

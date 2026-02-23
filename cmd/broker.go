@@ -19,8 +19,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"text/tabwriter"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/brokercredentials"
 	"github.com/ptone/scion-agent/pkg/config"
@@ -36,9 +38,11 @@ var (
 	// broker register flags
 	brokerForceRegister bool
 	brokerAutoProvide   bool
+	brokerHubName       string // --name flag for hub connection name
 
 	// broker deregister flags
 	brokerDeregisterBrokerOnly bool
+	brokerDeregisterName       string // --name flag for deregister
 
 	// broker start flags
 	brokerStartForeground  bool
@@ -55,6 +59,9 @@ var (
 	brokerGroveID      string
 	brokerBrokerID     string // --broker flag for remote broker operations
 	brokerMakeDefault  bool   // --make-default flag to set broker as grove default
+
+	// broker hubs flags
+	brokerHubsJSON bool
 )
 
 // brokerCmd represents the broker command group
@@ -73,6 +80,7 @@ Commands:
   restart      Stop and restart the broker daemon
   register     Register this host as a Runtime Broker with the Hub
   deregister   Remove this broker from the Hub
+  hubs         List hub connections
   provide      Add this broker as a provider for a grove
   withdraw     Remove this broker as a provider from a grove`,
 }
@@ -209,6 +217,24 @@ Examples:
 	RunE: runBrokerWithdraw,
 }
 
+// brokerHubsCmd lists all hub connections
+var brokerHubsCmd = &cobra.Command{
+	Use:   "hubs",
+	Short: "List hub connections",
+	Long: `List all hub connections for this Runtime Broker.
+
+Each connection represents a registration with a different Hub.
+Credentials are stored in ~/.scion/hub-credentials/.
+
+Examples:
+  # List all hub connections
+  scion broker hubs
+
+  # List hub connections in JSON format
+  scion broker hubs --json`,
+	RunE: runBrokerHubs,
+}
+
 // brokerStatusCmd shows the current broker status
 var brokerStatusCmd = &cobra.Command{
 	Use:   "status",
@@ -287,6 +313,7 @@ func init() {
 	brokerCmd.AddCommand(brokerStatusCmd)
 	brokerCmd.AddCommand(brokerStopCmd)
 	brokerCmd.AddCommand(brokerRestartCmd)
+	brokerCmd.AddCommand(brokerHubsCmd)
 
 	// Restart flags
 	brokerRestartCmd.Flags().IntVar(&brokerRestartPort, "port", DefaultBrokerPort, "Runtime Broker API port")
@@ -300,9 +327,14 @@ func init() {
 	// Register flags
 	brokerRegisterCmd.Flags().BoolVar(&brokerForceRegister, "force", false, "Force re-registration even if already registered")
 	brokerRegisterCmd.Flags().BoolVar(&brokerAutoProvide, "auto-provide", false, "Automatically add as provider for new groves")
+	brokerRegisterCmd.Flags().StringVar(&brokerHubName, "name", "", "Name for this hub connection (derived from endpoint if not specified)")
 
 	// Deregister flags
 	brokerDeregisterCmd.Flags().BoolVar(&brokerDeregisterBrokerOnly, "broker-only", false, "Only remove broker record, not grove providers")
+	brokerDeregisterCmd.Flags().StringVar(&brokerDeregisterName, "name", "", "Name of the hub connection to deregister")
+
+	// Hubs flags
+	brokerHubsCmd.Flags().BoolVar(&brokerHubsJSON, "json", false, "Output in JSON format")
 
 	// Start flags
 	brokerStartCmd.Flags().BoolVar(&brokerStartForeground, "foreground", false, "Run in foreground instead of as daemon")
@@ -409,16 +441,51 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 	}
 
 	// ==== TWO-PHASE BROKER REGISTRATION ====
-	credStore := brokercredentials.NewStore("")
-	existingCreds, credErr := credStore.Load()
+
+	// Get global directory early (needed for stable broker ID)
+	globalDir, globalDirErr := config.GetGlobalDir()
+
+	// Initialize MultiStore with auto-migration from legacy single-file store
+	multiStore := brokercredentials.NewMultiStore("")
+	legacyStore := brokercredentials.NewStore("")
+	if legacyStore.Exists() {
+		if err := multiStore.MigrateFromLegacy(legacyStore.Path()); err != nil {
+			fmt.Printf("Warning: failed to migrate legacy credentials: %v\n", err)
+		} else {
+			fmt.Printf("Migrated legacy credentials to %s\n", multiStore.Dir())
+		}
+	}
+
+	// Determine hub connection name
+	hubName := brokerHubName
+	if hubName == "" {
+		hubName = brokercredentials.DeriveHubName(endpoint)
+	}
+	if hubName == "" {
+		hubName = "default"
+	}
+
+	// Get or generate a stable broker UUID
+	var stableBrokerID string
+	if globalDirErr == nil {
+		globalSettings, gsErr := config.LoadSettings(globalDir)
+		if gsErr == nil && globalSettings.Hub != nil && globalSettings.Hub.BrokerID != "" {
+			stableBrokerID = globalSettings.Hub.BrokerID
+		}
+	}
+	if stableBrokerID == "" {
+		stableBrokerID = uuid.New().String()
+	}
+
+	// Check for existing credentials for this hub connection
+	existingCreds, credErr := multiStore.Load(hubName)
 
 	var brokerID string
 	var needsJoin bool
 
-	// Check if we already have valid credentials
 	if credErr == nil && existingCreds != nil && existingCreds.BrokerID != "" && !brokerForceRegister {
 		brokerID = existingCreds.BrokerID
-		fmt.Printf("Using existing broker credentials (brokerId: %s)\n", brokerID)
+		fmt.Printf("Using existing broker credentials for '%s' (brokerId: %s)\n", hubName, brokerID)
 
 		// Verify the broker still exists on the hub
 		_, err := client.RuntimeBrokers().Get(ctx, brokerID)
@@ -437,7 +504,8 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 
 		// Phase 1: Create broker registration
 		createReq := &hubclient.CreateBrokerRequest{
-			Name: brokerName,
+			BrokerID: stableBrokerID,
+			Name:     brokerName,
 			Capabilities: []string{
 				"sync",
 				"attach",
@@ -479,18 +547,25 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 
 		brokerID = joinResp.BrokerID
 
-		// Save credentials
-		if err := credStore.SaveFromJoinResponse(brokerID, joinResp.SecretKey, endpoint); err != nil {
+		// Save credentials to MultiStore
+		newCreds := &brokercredentials.BrokerCredentials{
+			Name:         hubName,
+			BrokerID:     brokerID,
+			SecretKey:    joinResp.SecretKey,
+			HubEndpoint:  endpoint,
+			AuthMode:     brokercredentials.AuthModeHMAC,
+			RegisteredAt: time.Now(),
+		}
+		if err := multiStore.Save(newCreds); err != nil {
 			fmt.Printf("Warning: failed to save broker credentials: %v\n", err)
 		} else {
-			fmt.Printf("Broker credentials saved to %s\n", credStore.Path())
+			fmt.Printf("Broker credentials saved to %s\n", multiStore.Dir())
 		}
 	}
 
 	// Save broker ID to global settings
-	globalDir, err := config.GetGlobalDir()
-	if err != nil {
-		fmt.Printf("Warning: failed to get global directory: %v\n", err)
+	if globalDirErr != nil {
+		fmt.Printf("Warning: failed to get global directory: %v\n", globalDirErr)
 	} else {
 		if endpoint != "" {
 			if err := config.UpdateSetting(globalDir, "hub.endpoint", endpoint, true); err != nil {
@@ -536,23 +611,62 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 }
 
 func runBrokerDeregister(cmd *cobra.Command, args []string) error {
-	// Check for existing broker credentials
-	credStore := brokercredentials.NewStore("")
-	creds, credErr := credStore.Load()
-
-	// Also check global settings for broker ID
-	globalDir, globalErr := config.GetGlobalDir()
-	var brokerID string
-
-	if credErr == nil && creds != nil && creds.BrokerID != "" {
-		brokerID = creds.BrokerID
-	} else if globalErr == nil {
-		globalSettings, err := config.LoadSettings(globalDir)
-		if err == nil && globalSettings.Hub != nil && globalSettings.Hub.BrokerID != "" {
-			brokerID = globalSettings.Hub.BrokerID
+	// Initialize MultiStore with auto-migration from legacy
+	multiStore := brokercredentials.NewMultiStore("")
+	legacyStore := brokercredentials.NewStore("")
+	if legacyStore.Exists() {
+		if err := multiStore.MigrateFromLegacy(legacyStore.Path()); err != nil {
+			fmt.Printf("Warning: failed to migrate legacy credentials: %v\n", err)
 		}
 	}
 
+	// Determine which connection to deregister
+	var creds *brokercredentials.BrokerCredentials
+	var hubName string
+
+	if brokerDeregisterName != "" {
+		// Specific connection requested
+		hubName = brokerDeregisterName
+		loaded, err := multiStore.Load(hubName)
+		if err != nil {
+			return fmt.Errorf("hub connection '%s' not found.\n\nUse 'scion broker hubs' to list connections.", hubName)
+		}
+		creds = loaded
+	} else {
+		// No name specified - require exactly one connection
+		all, err := multiStore.List()
+		if err != nil {
+			return fmt.Errorf("failed to list hub connections: %w", err)
+		}
+		switch len(all) {
+		case 0:
+			// Fall back to global settings
+			globalDir, globalErr := config.GetGlobalDir()
+			if globalErr == nil {
+				globalSettings, err := config.LoadSettings(globalDir)
+				if err == nil && globalSettings.Hub != nil && globalSettings.Hub.BrokerID != "" {
+					creds = &brokercredentials.BrokerCredentials{
+						BrokerID:    globalSettings.Hub.BrokerID,
+						HubEndpoint: globalSettings.Hub.Endpoint,
+					}
+				}
+			}
+			if creds == nil {
+				return fmt.Errorf("no broker registration found.\n\nThis host is not registered as a Runtime Broker with the Hub.")
+			}
+		case 1:
+			creds = &all[0]
+			hubName = creds.Name
+		default:
+			fmt.Println("Multiple hub connections found. Specify which to deregister with --name:")
+			for _, c := range all {
+				fmt.Printf("  - %s (%s)\n", c.Name, c.HubEndpoint)
+			}
+			return fmt.Errorf("use --name to specify which hub connection to deregister")
+		}
+	}
+
+	brokerID := creds.BrokerID
 	if brokerID == "" {
 		return fmt.Errorf("no broker registration found.\n\nThis host is not registered as a Runtime Broker with the Hub.")
 	}
@@ -606,12 +720,16 @@ func runBrokerDeregister(cmd *cobra.Command, args []string) error {
 	}
 
 	// Clear local credentials
-	if err := credStore.Delete(); err != nil {
-		fmt.Printf("Warning: failed to delete local credentials: %v\n", err)
+	if hubName != "" {
+		if err := multiStore.Delete(hubName); err != nil {
+			fmt.Printf("Warning: failed to delete local credentials: %v\n", err)
+		}
 	}
 
-	// Clear global settings
-	if globalErr == nil {
+	// Only clear global settings if no connections remain
+	globalDir, globalErr := config.GetGlobalDir()
+	remaining, _ := multiStore.List()
+	if globalErr == nil && len(remaining) == 0 {
 		_ = config.UpdateSetting(globalDir, "hub.brokerToken", "", true)
 		_ = config.UpdateSetting(globalDir, "hub.brokerId", "", true)
 	}
@@ -823,20 +941,8 @@ func runBrokerProvide(cmd *cobra.Command, args []string) error {
 		brokerID = brokerBrokerID
 		// Broker name will be fetched from Hub below
 	} else {
-		// Get broker ID from local credentials
-		credStore := brokercredentials.NewStore("")
-		creds, credErr := credStore.Load()
-
-		globalDir, globalErr := config.GetGlobalDir()
-
-		if credErr == nil && creds != nil && creds.BrokerID != "" {
-			brokerID = creds.BrokerID
-		} else if globalErr == nil {
-			globalSettings, err := config.LoadSettings(globalDir)
-			if err == nil && globalSettings.Hub != nil && globalSettings.Hub.BrokerID != "" {
-				brokerID = globalSettings.Hub.BrokerID
-			}
-		}
+		// Get broker ID from local credentials (try MultiStore first)
+		brokerID = getLocalBrokerID()
 
 		if brokerID == "" {
 			return fmt.Errorf("no broker registration found.\n\nRegister with: scion broker register\nOr specify a broker with --broker <name-or-id>")
@@ -1000,20 +1106,8 @@ func runBrokerWithdraw(cmd *cobra.Command, args []string) error {
 		brokerID = brokerBrokerID
 		// Broker name will be fetched from Hub below
 	} else {
-		// Get broker ID from local credentials
-		credStore := brokercredentials.NewStore("")
-		creds, credErr := credStore.Load()
-
-		globalDir, globalErr := config.GetGlobalDir()
-
-		if credErr == nil && creds != nil && creds.BrokerID != "" {
-			brokerID = creds.BrokerID
-		} else if globalErr == nil {
-			globalSettings, err := config.LoadSettings(globalDir)
-			if err == nil && globalSettings.Hub != nil && globalSettings.Hub.BrokerID != "" {
-				brokerID = globalSettings.Hub.BrokerID
-			}
-		}
+		// Get broker ID from local credentials (try MultiStore first)
+		brokerID = getLocalBrokerID()
 
 		if brokerID == "" {
 			return fmt.Errorf("no broker registration found.\n\nRegister with: scion broker register\nOr specify a broker with --broker <name-or-id>")
@@ -1159,15 +1253,25 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 		status.ServerVersion = health.Version
 	}
 
-	// Get broker credentials
-	credStore := brokercredentials.NewStore("")
-	creds, credErr := credStore.Load()
+	// Load hub connections from MultiStore
+	multiStore := brokercredentials.NewMultiStore("")
 
-	if credErr == nil && creds != nil && creds.BrokerID != "" {
-		status.BrokerID = creds.BrokerID
-		status.HubEndpoint = creds.HubEndpoint
+	// Auto-migrate legacy credentials if they exist
+	legacyStore := brokercredentials.NewStore("")
+	if legacyStore.Exists() {
+		if err := multiStore.MigrateFromLegacy(legacyStore.Path()); err != nil {
+			util.Debugf("Warning: failed to migrate legacy credentials: %v", err)
+		}
+	}
+
+	allCreds, _ := multiStore.List()
+
+	// Get broker ID from first connection or global settings
+	if len(allCreds) > 0 {
+		status.BrokerID = allCreds[0].BrokerID
+		status.HubEndpoint = allCreds[0].HubEndpoint
 		status.Registered = true
-		status.CredentialsPath = credStore.Path()
+		status.CredentialsPath = multiStore.Dir()
 	} else {
 		// Check global settings for broker ID (may be pre-populated from init or from registration)
 		globalSettings, err := config.LoadSettings(globalDir)
@@ -1176,6 +1280,17 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 			status.HubEndpoint = globalSettings.Hub.Endpoint
 			status.Registered = true
 		}
+	}
+
+	// Build hub connection statuses
+	for _, c := range allCreds {
+		status.HubConnections = append(status.HubConnections, brokerHubConnectionStatus{
+			Name:         c.Name,
+			HubEndpoint:  c.HubEndpoint,
+			AuthMode:     string(c.AuthMode),
+			RegisteredAt: c.RegisteredAt,
+			BrokerID:     c.BrokerID,
+		})
 	}
 
 	// Get broker name
@@ -1257,13 +1372,40 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
-	// Registration status
-	fmt.Println("Hub Registration")
-	fmt.Println("----------------")
-	if status.BrokerID != "" {
-		fmt.Printf("  Broker ID:   %s\n", status.BrokerID)
-	}
-	if status.Registered {
+	// Hub Connections
+	if len(status.HubConnections) > 0 {
+		fmt.Println("Hub Connections")
+		fmt.Println("---------------")
+		if status.BrokerID != "" {
+			fmt.Printf("  Broker ID:   %s\n", status.BrokerID)
+		}
+		fmt.Println()
+		for _, conn := range status.HubConnections {
+			fmt.Printf("  %s\n", conn.Name)
+			fmt.Printf("    Hub:         %s\n", conn.HubEndpoint)
+			fmt.Printf("    Auth:        %s\n", conn.AuthMode)
+			if !conn.RegisteredAt.IsZero() {
+				fmt.Printf("    Registered:  %s\n", conn.RegisteredAt.Format("2006-01-02"))
+			}
+		}
+		if status.HubConnected {
+			fmt.Printf("\n  Connected:   yes (%s)\n", status.HubStatus)
+			if status.BrokerStatus != "" {
+				fmt.Printf("  Status:      %s\n", status.BrokerStatus)
+			}
+			if !status.LastHeartbeat.IsZero() {
+				fmt.Printf("  Last seen:   %s\n", formatRelativeTime(status.LastHeartbeat))
+			}
+		} else if status.Registered {
+			fmt.Printf("\n  Connected:   no (Hub unreachable)\n")
+		}
+	} else if status.Registered {
+		// Legacy single-connection display
+		fmt.Println("Hub Registration")
+		fmt.Println("----------------")
+		if status.BrokerID != "" {
+			fmt.Printf("  Broker ID:   %s\n", status.BrokerID)
+		}
 		fmt.Printf("  Registered:  yes\n")
 		if status.BrokerName != "" {
 			fmt.Printf("  Broker Name: %s\n", status.BrokerName)
@@ -1281,6 +1423,8 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  Connected:   no (Hub unreachable)\n")
 		}
 	} else {
+		fmt.Println("Hub Registration")
+		fmt.Println("----------------")
 		fmt.Printf("  Registered:  no\n")
 		fmt.Printf("\n  Run 'scion broker register' to register with the Hub.\n")
 	}
@@ -1299,6 +1443,60 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  (none)\n")
 		fmt.Printf("\n  Run 'scion broker provide' to add this broker as a provider for a grove.\n")
 	}
+
+	return nil
+}
+
+func runBrokerHubs(cmd *cobra.Command, args []string) error {
+	// Bridge --json flag to global --format
+	if brokerHubsJSON {
+		outputFormat = "json"
+	}
+
+	// Initialize MultiStore with auto-migration from legacy
+	multiStore := brokercredentials.NewMultiStore("")
+	legacyStore := brokercredentials.NewStore("")
+	if legacyStore.Exists() {
+		if err := multiStore.MigrateFromLegacy(legacyStore.Path()); err != nil {
+			fmt.Printf("Warning: failed to migrate legacy credentials: %v\n", err)
+		}
+	}
+
+	allCreds, err := multiStore.List()
+	if err != nil {
+		return fmt.Errorf("failed to list hub connections: %w", err)
+	}
+
+	if isJSONOutput() {
+		return outputJSON(allCreds)
+	}
+
+	if len(allCreds) == 0 {
+		fmt.Println("No hub connections found.")
+		fmt.Println("\nRun 'scion broker register' to register with a Hub.")
+		return nil
+	}
+
+	fmt.Println("Hub Connections")
+	fmt.Println("===============")
+	fmt.Println()
+
+	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
+	fmt.Fprintf(w, "  NAME\tHUB ENDPOINT\tAUTH\tREGISTERED\n")
+	for _, c := range allCreds {
+		regDate := ""
+		if !c.RegisteredAt.IsZero() {
+			regDate = c.RegisteredAt.Format("2006-01-02")
+		}
+		authMode := string(c.AuthMode)
+		if authMode == "" {
+			authMode = "hmac"
+		}
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", c.Name, c.HubEndpoint, authMode, regDate)
+	}
+	w.Flush()
+
+	fmt.Printf("\nCredentials directory: %s\n", multiStore.Dir())
 
 	return nil
 }
@@ -1424,8 +1622,20 @@ type brokerStatusInfo struct {
 	HubVersion    string    `json:"hubVersion,omitempty"`
 	LastHeartbeat time.Time `json:"lastHeartbeat,omitempty"`
 
+	// Hub connections
+	HubConnections []brokerHubConnectionStatus `json:"hubConnections,omitempty"`
+
 	// Groves
 	Groves []brokerGroveStatus `json:"groves,omitempty"`
+}
+
+// brokerHubConnectionStatus holds status for a single hub connection.
+type brokerHubConnectionStatus struct {
+	Name         string    `json:"name"`
+	HubEndpoint  string    `json:"hubEndpoint"`
+	AuthMode     string    `json:"authMode"`
+	RegisteredAt time.Time `json:"registeredAt,omitempty"`
+	BrokerID     string    `json:"brokerId"`
 }
 
 // brokerGroveStatus holds grove info for status output
@@ -1498,6 +1708,40 @@ func resolveBrokerByNameOrID(ctx context.Context, client hubclient.Client, nameO
 	default:
 		return nil, fmt.Errorf("multiple brokers found with name '%s' - please use the broker ID instead", nameOrID)
 	}
+}
+
+// getLocalBrokerID resolves the local broker ID from MultiStore or global settings.
+// It tries MultiStore first, then falls back to the global settings file.
+func getLocalBrokerID() string {
+	// Try MultiStore first
+	multiStore := brokercredentials.NewMultiStore("")
+	allCreds, err := multiStore.List()
+	if err == nil && len(allCreds) == 1 {
+		return allCreds[0].BrokerID
+	}
+	if err == nil && len(allCreds) > 1 {
+		// Multiple connections - use the first one's broker ID
+		// (they should all share the same stable ID)
+		return allCreds[0].BrokerID
+	}
+
+	// Fall back to legacy single-file store
+	legacyStore := brokercredentials.NewStore("")
+	creds, credErr := legacyStore.Load()
+	if credErr == nil && creds != nil && creds.BrokerID != "" {
+		return creds.BrokerID
+	}
+
+	// Fall back to global settings
+	globalDir, globalErr := config.GetGlobalDir()
+	if globalErr == nil {
+		globalSettings, err := config.LoadSettings(globalDir)
+		if err == nil && globalSettings.Hub != nil && globalSettings.Hub.BrokerID != "" {
+			return globalSettings.Hub.BrokerID
+		}
+	}
+
+	return ""
 }
 
 // buildBrokerProfiles builds BrokerProfile objects from settings.Profiles.
