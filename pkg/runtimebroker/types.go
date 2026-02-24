@@ -75,6 +75,28 @@ type GroveInfo struct {
 }
 
 // ============================================================================
+// Hub Connection Status Types
+// ============================================================================
+
+// HubConnectionStatusResponse is the response for the /api/v1/hub-connections endpoint.
+type HubConnectionStatusResponse struct {
+	Connections []HubConnectionInfo `json:"connections"`
+	Mode        string              `json:"mode"` // "single-hub" or "multi-hub"
+}
+
+// HubConnectionInfo describes the live status of a single hub connection.
+type HubConnectionInfo struct {
+	Name              string `json:"name"`
+	HubEndpoint       string `json:"hubEndpoint"`
+	BrokerID          string `json:"brokerId"`
+	AuthMode          string `json:"authMode,omitempty"`
+	Status            string `json:"status"` // "connected", "disconnected", "error"
+	IsColocated       bool   `json:"isColocated,omitempty"`
+	HasHeartbeat      bool   `json:"hasHeartbeat"`
+	HasControlChannel bool   `json:"hasControlChannel"`
+}
+
+// ============================================================================
 // Agent Types
 // ============================================================================
 

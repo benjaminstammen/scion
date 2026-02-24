@@ -959,6 +959,7 @@ func (s *Server) registerRoutes() {
 
 	// API v1 routes
 	s.mux.HandleFunc("/api/v1/info", s.handleInfo)
+	s.mux.HandleFunc("/api/v1/hub-connections", s.handleHubConnections)
 
 	// Agent routes
 	s.mux.HandleFunc("/api/v1/agents", s.handleAgents)

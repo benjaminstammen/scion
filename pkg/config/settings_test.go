@@ -651,3 +651,214 @@ func TestHubSettingsLoadFromGlobal(t *testing.T) {
 		t.Errorf("expected hub.brokerId from global, got %q", s.Hub.BrokerID)
 	}
 }
+
+func TestMergeSettingsHubConnections(t *testing.T) {
+	base := &Settings{
+		HubConnections: map[string]HubConnectionConfig{
+			"hub-prod": {Endpoint: "https://hub.prod.example.com"},
+		},
+	}
+	overrideJSON := `{
+		"hub_connections": {
+			"hub-prod": {"endpoint": "https://hub.prod.v2.example.com"},
+			"hub-staging": {"endpoint": "https://hub.staging.example.com"}
+		}
+	}`
+
+	err := MergeSettings(base, []byte(overrideJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(base.HubConnections) != 2 {
+		t.Fatalf("expected 2 hub connections, got %d", len(base.HubConnections))
+	}
+
+	if base.HubConnections["hub-prod"].Endpoint != "https://hub.prod.v2.example.com" {
+		t.Errorf("expected hub-prod endpoint to be overridden, got %q", base.HubConnections["hub-prod"].Endpoint)
+	}
+
+	if base.HubConnections["hub-staging"].Endpoint != "https://hub.staging.example.com" {
+		t.Errorf("expected hub-staging endpoint, got %q", base.HubConnections["hub-staging"].Endpoint)
+	}
+}
+
+func TestMergeSettingsHubConnectionsNilBase(t *testing.T) {
+	base := &Settings{}
+	overrideJSON := `{
+		"hub_connections": {
+			"hub-dev": {"endpoint": "https://hub.dev.example.com"}
+		}
+	}`
+
+	err := MergeSettings(base, []byte(overrideJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if base.HubConnections == nil {
+		t.Fatal("expected HubConnections to be initialized")
+	}
+
+	if base.HubConnections["hub-dev"].Endpoint != "https://hub.dev.example.com" {
+		t.Errorf("expected hub-dev endpoint, got %q", base.HubConnections["hub-dev"].Endpoint)
+	}
+}
+
+func TestUpdateSettingHubConnections(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	groveDir := filepath.Join(tmpDir, "my-grove")
+	groveScionDir := filepath.Join(groveDir, ".scion")
+	if err := os.MkdirAll(groveScionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a hub connection endpoint
+	err := UpdateSetting(groveScionDir, "hub_connections.hub-prod.endpoint", "https://hub.prod.example.com", false)
+	if err != nil {
+		t.Fatalf("UpdateSetting hub_connections failed: %v", err)
+	}
+
+	// Verify by reading back
+	content, err := os.ReadFile(filepath.Join(groveScionDir, "settings.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "hub-prod") {
+		t.Errorf("expected file to contain hub-prod, got %s", string(content))
+	}
+	if !strings.Contains(string(content), "hub.prod.example.com") {
+		t.Errorf("expected file to contain hub.prod.example.com, got %s", string(content))
+	}
+
+	// Write a second connection
+	err = UpdateSetting(groveScionDir, "hub_connections.hub-staging.endpoint", "https://hub.staging.example.com", false)
+	if err != nil {
+		t.Fatalf("UpdateSetting hub_connections second failed: %v", err)
+	}
+
+	// Verify both are present
+	content, _ = os.ReadFile(filepath.Join(groveScionDir, "settings.yaml"))
+	if !strings.Contains(string(content), "hub-prod") || !strings.Contains(string(content), "hub-staging") {
+		t.Errorf("expected both hub connections in settings, got %s", string(content))
+	}
+}
+
+func TestUpdateSettingHubConnectionsInvalidKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	groveScionDir := filepath.Join(tmpDir, ".scion")
+	if err := os.MkdirAll(groveScionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Missing field part
+	err := UpdateSetting(groveScionDir, "hub_connections.hub-prod", "value", false)
+	if err == nil {
+		t.Error("expected error for invalid hub_connections key")
+	}
+
+	// Unknown field
+	err = UpdateSetting(groveScionDir, "hub_connections.hub-prod.unknown_field", "value", false)
+	if err == nil {
+		t.Error("expected error for unknown hub_connections field")
+	}
+}
+
+func TestGetSettingValueHubConnections(t *testing.T) {
+	s := &Settings{
+		HubConnections: map[string]HubConnectionConfig{
+			"hub-prod": {Endpoint: "https://hub.prod.example.com"},
+		},
+	}
+
+	val, err := GetSettingValue(s, "hub_connections.hub-prod.endpoint")
+	if err != nil {
+		t.Fatalf("GetSettingValue failed: %v", err)
+	}
+	if val != "https://hub.prod.example.com" {
+		t.Errorf("expected hub.prod.example.com, got %q", val)
+	}
+
+	// Non-existent connection
+	val, err = GetSettingValue(s, "hub_connections.nonexistent.endpoint")
+	if err != nil {
+		t.Fatalf("GetSettingValue for nonexistent should not error: %v", err)
+	}
+	if val != "" {
+		t.Errorf("expected empty string for nonexistent, got %q", val)
+	}
+}
+
+func TestGetSettingsMapHubConnections(t *testing.T) {
+	s := &Settings{
+		HubConnections: map[string]HubConnectionConfig{
+			"hub-prod":    {Endpoint: "https://hub.prod.example.com"},
+			"hub-staging": {Endpoint: "https://hub.staging.example.com"},
+		},
+	}
+
+	m := GetSettingsMap(s)
+	if m["hub_connections.hub-prod.endpoint"] != "https://hub.prod.example.com" {
+		t.Errorf("expected hub-prod endpoint in map, got %q", m["hub_connections.hub-prod.endpoint"])
+	}
+	if m["hub_connections.hub-staging.endpoint"] != "https://hub.staging.example.com" {
+		t.Errorf("expected hub-staging endpoint in map, got %q", m["hub_connections.hub-staging.endpoint"])
+	}
+}
+
+func TestDeleteHubConnection(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	groveScionDir := filepath.Join(tmpDir, ".scion")
+	if err := os.MkdirAll(groveScionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write two connections
+	err := UpdateSetting(groveScionDir, "hub_connections.hub-prod.endpoint", "https://hub.prod.example.com", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = UpdateSetting(groveScionDir, "hub_connections.hub-staging.endpoint", "https://hub.staging.example.com", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete one
+	err = DeleteHubConnection(groveScionDir, "hub-prod", false)
+	if err != nil {
+		t.Fatalf("DeleteHubConnection failed: %v", err)
+	}
+
+	// Verify only staging remains
+	content, _ := os.ReadFile(filepath.Join(groveScionDir, "settings.yaml"))
+	if strings.Contains(string(content), "hub-prod") {
+		t.Errorf("expected hub-prod to be deleted, got %s", string(content))
+	}
+	if !strings.Contains(string(content), "hub-staging") {
+		t.Errorf("expected hub-staging to still exist, got %s", string(content))
+	}
+
+	// Delete the last one
+	err = DeleteHubConnection(groveScionDir, "hub-staging", false)
+	if err != nil {
+		t.Fatalf("DeleteHubConnection last failed: %v", err)
+	}
+
+	// Verify hub_connections is cleaned up
+	content, _ = os.ReadFile(filepath.Join(groveScionDir, "settings.yaml"))
+	if strings.Contains(string(content), "hub_connections") {
+		t.Errorf("expected hub_connections to be cleaned up, got %s", string(content))
+	}
+}

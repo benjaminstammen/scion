@@ -1288,3 +1288,211 @@ func TestControlChannel_EmptyConnectionName(t *testing.T) {
 		t.Errorf("expected empty connectionName, got %q", cc.connectionName)
 	}
 }
+
+// ============================================================================
+// Phase 4: Hub Connections API Endpoint Tests
+// ============================================================================
+
+func TestHandleHubConnections_SingleConnection(t *testing.T) {
+	creds := makeTestCreds("local", "broker-1", "http://localhost:8080")
+	srv := newTestServerWithInMemoryCreds(creds)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/hub-connections", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp HubConnectionStatusResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Mode != "single-hub" {
+		t.Errorf("expected mode 'single-hub', got %q", resp.Mode)
+	}
+
+	if len(resp.Connections) != 1 {
+		t.Fatalf("expected 1 connection, got %d", len(resp.Connections))
+	}
+
+	conn := resp.Connections[0]
+	if conn.Name != "local" {
+		t.Errorf("expected connection name 'local', got %q", conn.Name)
+	}
+	if conn.HubEndpoint != "http://localhost:8080" {
+		t.Errorf("expected endpoint 'http://localhost:8080', got %q", conn.HubEndpoint)
+	}
+	if conn.BrokerID != "broker-1" {
+		t.Errorf("expected brokerId 'broker-1', got %q", conn.BrokerID)
+	}
+}
+
+func TestHandleHubConnections_MultipleConnections(t *testing.T) {
+	creds := makeTestCreds("local", "broker-1", "http://localhost:8080")
+	srv := newTestServerWithInMemoryCreds(creds)
+
+	// Add a second connection
+	creds2 := makeTestCreds("hub-prod", "broker-2", "https://hub.prod.example.com")
+	conn2, err := srv.createHubConnection("hub-prod", creds2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.hubMu.Lock()
+	srv.hubConnections["hub-prod"] = conn2
+	srv.hubMu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/hub-connections", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp HubConnectionStatusResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Mode != "multi-hub" {
+		t.Errorf("expected mode 'multi-hub', got %q", resp.Mode)
+	}
+
+	if len(resp.Connections) != 2 {
+		t.Fatalf("expected 2 connections, got %d", len(resp.Connections))
+	}
+
+	// Build lookup
+	connMap := make(map[string]HubConnectionInfo)
+	for _, c := range resp.Connections {
+		connMap[c.Name] = c
+	}
+
+	if _, ok := connMap["local"]; !ok {
+		t.Error("expected 'local' connection in response")
+	}
+	if _, ok := connMap["hub-prod"]; !ok {
+		t.Error("expected 'hub-prod' connection in response")
+	}
+}
+
+func TestHandleHubConnections_ColocatedFlag(t *testing.T) {
+	creds := makeTestCreds("local", "broker-1", "http://localhost:8080")
+	srv := newTestServerWithInMemoryCreds(creds)
+
+	// Add a remote connection
+	creds2 := makeTestCreds("hub-prod", "broker-2", "https://hub.prod.example.com")
+	conn2, err := srv.createHubConnection("hub-prod", creds2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.hubMu.Lock()
+	srv.hubConnections["hub-prod"] = conn2
+	srv.hubMu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/hub-connections", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	var resp HubConnectionStatusResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	connMap := make(map[string]HubConnectionInfo)
+	for _, c := range resp.Connections {
+		connMap[c.Name] = c
+	}
+
+	localConn, ok := connMap["local"]
+	if !ok {
+		t.Fatal("expected 'local' connection")
+	}
+	if !localConn.IsColocated {
+		t.Error("expected 'local' to be marked as co-located")
+	}
+
+	prodConn, ok := connMap["hub-prod"]
+	if !ok {
+		t.Fatal("expected 'hub-prod' connection")
+	}
+	if prodConn.IsColocated {
+		t.Error("expected 'hub-prod' to NOT be marked as co-located")
+	}
+}
+
+func TestHandleHubConnections_NoConnections(t *testing.T) {
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/hub-connections", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp HubConnectionStatusResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Mode != "single-hub" {
+		t.Errorf("expected mode 'single-hub' for 0 connections, got %q", resp.Mode)
+	}
+
+	if len(resp.Connections) != 0 {
+		t.Errorf("expected 0 connections, got %d", len(resp.Connections))
+	}
+}
+
+func TestHandleHubConnections_MethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/hub-connections", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for POST, got %d", w.Code)
+	}
+}
+
+func TestHandleHubConnections_ConnectionStatus(t *testing.T) {
+	creds := makeTestCreds("local", "broker-1", "http://localhost:8080")
+	srv := newTestServerWithInMemoryCreds(creds)
+
+	// Verify the status field is populated
+	srv.hubMu.RLock()
+	conn := srv.hubConnections["local"]
+	srv.hubMu.RUnlock()
+
+	// Set a known status
+	conn.setStatus(ConnectionStatusConnected)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/hub-connections", nil)
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	var resp HubConnectionStatusResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Connections) != 1 {
+		t.Fatalf("expected 1 connection, got %d", len(resp.Connections))
+	}
+
+	if resp.Connections[0].Status != "connected" {
+		t.Errorf("expected status 'connected', got %q", resp.Connections[0].Status)
+	}
+}

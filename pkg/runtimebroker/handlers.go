@@ -125,6 +125,44 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleHubConnections returns live status of all hub connections.
+func (s *Server) handleHubConnections(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		MethodNotAllowed(w)
+		return
+	}
+
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+
+	mode := "single-hub"
+	if len(s.hubConnections) > 1 {
+		mode = "multi-hub"
+	}
+
+	connections := make([]HubConnectionInfo, 0, len(s.hubConnections))
+	for _, conn := range s.hubConnections {
+		info := HubConnectionInfo{
+			Name:              conn.Name,
+			HubEndpoint:       conn.HubEndpoint,
+			BrokerID:          conn.BrokerID,
+			AuthMode:          string(conn.AuthMode),
+			Status:            string(conn.GetStatus()),
+			IsColocated:       conn.IsColocated,
+			HasHeartbeat:      conn.Heartbeat != nil,
+			HasControlChannel: conn.ControlChannel != nil,
+		}
+		connections = append(connections, info)
+	}
+
+	resp := HubConnectionStatusResponse{
+		Connections: connections,
+		Mode:        mode,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // ============================================================================
 // Agent Endpoints
 // ============================================================================

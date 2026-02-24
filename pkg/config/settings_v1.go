@@ -1416,6 +1416,10 @@ func UpdateVersionedSetting(dir string, key string, value string) error {
 		return nil
 
 	default:
+		// Handle hub_connections.* keys: skip in v1 format (not supported)
+		if strings.HasPrefix(key, "hub_connections.") {
+			return nil
+		}
 		return fmt.Errorf("unknown or complex setting key: %s (manual edit recommended for registries)", key)
 	}
 

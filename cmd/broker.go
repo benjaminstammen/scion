@@ -16,7 +16,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"text/tabwriter"
@@ -59,6 +62,7 @@ var (
 	brokerGroveID      string
 	brokerBrokerID     string // --broker flag for remote broker operations
 	brokerMakeDefault  bool   // --make-default flag to set broker as grove default
+	brokerHubFlag      string // --hub flag to target a specific hub connection
 
 	// broker hubs flags
 	brokerHubsJSON bool
@@ -346,8 +350,10 @@ func init() {
 	brokerProvideCmd.Flags().StringVar(&brokerGroveID, "grove", "", "Grove name or ID to add as provider for")
 	brokerProvideCmd.Flags().StringVar(&brokerBrokerID, "broker", "", "Broker name or ID to use (for remote broker operations)")
 	brokerProvideCmd.Flags().BoolVar(&brokerMakeDefault, "make-default", false, "Set this broker as the default for the grove")
+	brokerProvideCmd.Flags().StringVar(&brokerHubFlag, "hub", "", "Hub connection name (from 'scion broker hubs')")
 	brokerWithdrawCmd.Flags().StringVar(&brokerGroveID, "grove", "", "Grove name or ID to remove as provider from")
 	brokerWithdrawCmd.Flags().StringVar(&brokerBrokerID, "broker", "", "Broker name or ID to use (for remote broker operations)")
+	brokerWithdrawCmd.Flags().StringVar(&brokerHubFlag, "hub", "", "Hub connection name (from 'scion broker hubs')")
 }
 
 func runBrokerRegister(cmd *cobra.Command, args []string) error {
@@ -575,6 +581,10 @@ func runBrokerRegister(cmd *cobra.Command, args []string) error {
 		if err := config.UpdateSetting(globalDir, "hub.brokerId", brokerID, true); err != nil {
 			fmt.Printf("Warning: failed to save broker ID: %v\n", err)
 		}
+		// Write hub_connections entry for this registration
+		if err := config.UpdateSetting(globalDir, "hub_connections."+hubName+".endpoint", endpoint, true); err != nil {
+			fmt.Printf("Warning: failed to save hub connection to settings: %v\n", err)
+		}
 	}
 
 	// If grove is linked, offer to add this broker as a provider
@@ -726,8 +736,15 @@ func runBrokerDeregister(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Only clear global settings if no connections remain
+	// Remove hub_connections entry from global settings
 	globalDir, globalErr := config.GetGlobalDir()
+	if globalErr == nil && hubName != "" {
+		if err := config.DeleteHubConnection(globalDir, hubName, false); err != nil {
+			fmt.Printf("Warning: failed to remove hub connection from settings: %v\n", err)
+		}
+	}
+
+	// Only clear global settings if no connections remain
 	remaining, _ := multiStore.List()
 	if globalErr == nil && len(remaining) == 0 {
 		_ = config.UpdateSetting(globalDir, "hub.brokerToken", "", true)
@@ -992,20 +1009,29 @@ func runBrokerProvide(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Load settings for Hub client
-	resolvedPath, _, err := config.ResolveGrovePath(grovePath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve grove path: %w", err)
-	}
+	// Load Hub client: use --hub flag if specified, otherwise fall back to grove settings
+	var client hubclient.Client
+	if brokerHubFlag != "" {
+		var err error
+		client, err = getHubClientForConnection(brokerHubFlag)
+		if err != nil {
+			return err
+		}
+	} else {
+		resolvedPath, _, err := config.ResolveGrovePath(grovePath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve grove path: %w", err)
+		}
 
-	settings, err := config.LoadSettings(resolvedPath)
-	if err != nil {
-		return fmt.Errorf("failed to load settings: %w", err)
-	}
+		settings, err := config.LoadSettings(resolvedPath)
+		if err != nil {
+			return fmt.Errorf("failed to load settings: %w", err)
+		}
 
-	client, err := getHubClient(settings)
-	if err != nil {
-		return err
+		client, err = getHubClient(settings)
+		if err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1157,20 +1183,29 @@ func runBrokerWithdraw(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Load settings for Hub client
-	resolvedPath, _, err := config.ResolveGrovePath(grovePath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve grove path: %w", err)
-	}
+	// Load Hub client: use --hub flag if specified, otherwise fall back to grove settings
+	var client hubclient.Client
+	if brokerHubFlag != "" {
+		var err error
+		client, err = getHubClientForConnection(brokerHubFlag)
+		if err != nil {
+			return err
+		}
+	} else {
+		resolvedPath, _, err := config.ResolveGrovePath(grovePath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve grove path: %w", err)
+		}
 
-	settings, err := config.LoadSettings(resolvedPath)
-	if err != nil {
-		return fmt.Errorf("failed to load settings: %w", err)
-	}
+		settings, err := config.LoadSettings(resolvedPath)
+		if err != nil {
+			return fmt.Errorf("failed to load settings: %w", err)
+		}
 
-	client, err := getHubClient(settings)
-	if err != nil {
-		return err
+		client, err = getHubClient(settings)
+		if err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1374,16 +1409,33 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 
 	// Hub Connections
 	if len(status.HubConnections) > 0 {
+		// Try to get live status from running broker server
+		liveStatus := queryBrokerHubConnections(DefaultBrokerPort)
+		liveStatusMap := make(map[string]string)
+		if liveStatus != nil {
+			for _, conn := range liveStatus.Connections {
+				liveStatusMap[conn.Name] = conn.Status
+			}
+		}
+
 		fmt.Println("Hub Connections")
 		fmt.Println("---------------")
 		if status.BrokerID != "" {
 			fmt.Printf("  Broker ID:   %s\n", status.BrokerID)
 		}
+		if liveStatus != nil {
+			fmt.Printf("  Mode:        %s\n", liveStatus.Mode)
+		}
 		fmt.Println()
 		for _, conn := range status.HubConnections {
+			connStatus := "unknown"
+			if s, ok := liveStatusMap[conn.Name]; ok {
+				connStatus = s
+			}
 			fmt.Printf("  %s\n", conn.Name)
 			fmt.Printf("    Hub:         %s\n", conn.HubEndpoint)
 			fmt.Printf("    Auth:        %s\n", conn.AuthMode)
+			fmt.Printf("    Status:      %s\n", connStatus)
 			if !conn.RegisteredAt.IsZero() {
 				fmt.Printf("    Registered:  %s\n", conn.RegisteredAt.Format("2006-01-02"))
 			}
@@ -1477,12 +1529,28 @@ func runBrokerHubs(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Try to get live status from running broker server
+	liveStatus := queryBrokerHubConnections(DefaultBrokerPort)
+
+	// Build a lookup map for live status by connection name
+	liveStatusMap := make(map[string]string)
+	var mode string
+	if liveStatus != nil {
+		mode = liveStatus.Mode
+		for _, conn := range liveStatus.Connections {
+			liveStatusMap[conn.Name] = conn.Status
+		}
+	}
+
 	fmt.Println("Hub Connections")
 	fmt.Println("===============")
+	if mode != "" {
+		fmt.Printf("Mode: %s\n", mode)
+	}
 	fmt.Println()
 
 	w := tabwriter.NewWriter(os.Stdout, 2, 4, 2, ' ', 0)
-	fmt.Fprintf(w, "  NAME\tHUB ENDPOINT\tAUTH\tREGISTERED\n")
+	fmt.Fprintf(w, "  NAME\tHUB ENDPOINT\tAUTH\tSTATUS\tREGISTERED\n")
 	for _, c := range allCreds {
 		regDate := ""
 		if !c.RegisteredAt.IsZero() {
@@ -1492,7 +1560,11 @@ func runBrokerHubs(cmd *cobra.Command, args []string) error {
 		if authMode == "" {
 			authMode = "hmac"
 		}
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", c.Name, c.HubEndpoint, authMode, regDate)
+		status := "unknown"
+		if s, ok := liveStatusMap[c.Name]; ok {
+			status = s
+		}
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", c.Name, c.HubEndpoint, authMode, status, regDate)
 	}
 	w.Flush()
 
@@ -1778,4 +1850,89 @@ func buildBrokerProfiles(settings *config.Settings) []hubclient.BrokerProfile {
 	}
 
 	return profiles
+}
+
+// getHubClientForConnection creates a hub client using credentials from a named hub connection.
+// It loads the credential file from the MultiStore and constructs a hub client
+// authenticated with the connection's HMAC credentials.
+func getHubClientForConnection(name string) (hubclient.Client, error) {
+	multiStore := brokercredentials.NewMultiStore("")
+	creds, err := multiStore.Load(name)
+	if err != nil {
+		return nil, fmt.Errorf("hub connection '%s' not found.\n\nUse 'scion broker hubs' to list available connections.", name)
+	}
+
+	if creds.HubEndpoint == "" {
+		return nil, fmt.Errorf("hub connection '%s' has no endpoint configured", name)
+	}
+
+	var opts []hubclient.Option
+	switch creds.AuthMode {
+	case brokercredentials.AuthModeDevAuth:
+		opts = append(opts, hubclient.WithAutoDevAuth())
+	default:
+		if creds.SecretKey != "" {
+			secretKey, err := base64.StdEncoding.DecodeString(creds.SecretKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode secret key for connection '%s': %w", name, err)
+			}
+			opts = append(opts, hubclient.WithHMACAuth(creds.BrokerID, secretKey))
+		} else {
+			opts = append(opts, hubclient.WithAutoDevAuth())
+		}
+	}
+
+	client, err := hubclient.New(creds.HubEndpoint, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hub client for connection '%s': %w", name, err)
+	}
+
+	return client, nil
+}
+
+// BrokerHubConnectionsResponse mirrors runtimebroker.HubConnectionStatusResponse
+// for CLI use without importing the runtimebroker package.
+type BrokerHubConnectionsResponse struct {
+	Connections []BrokerHubConnectionInfo `json:"connections"`
+	Mode        string                   `json:"mode"`
+}
+
+// BrokerHubConnectionInfo mirrors runtimebroker.HubConnectionInfo for CLI use.
+type BrokerHubConnectionInfo struct {
+	Name              string `json:"name"`
+	HubEndpoint       string `json:"hubEndpoint"`
+	BrokerID          string `json:"brokerId"`
+	AuthMode          string `json:"authMode,omitempty"`
+	Status            string `json:"status"`
+	IsColocated       bool   `json:"isColocated,omitempty"`
+	HasHeartbeat      bool   `json:"hasHeartbeat"`
+	HasControlChannel bool   `json:"hasControlChannel"`
+}
+
+// queryBrokerHubConnections queries the local broker server for live hub connection status.
+// Returns nil if the server is not running or the endpoint is not available.
+func queryBrokerHubConnections(port int) *BrokerHubConnectionsResponse {
+	if port <= 0 {
+		port = DefaultBrokerPort
+	}
+
+	url := fmt.Sprintf("http://localhost:%d/api/v1/hub-connections", port)
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var result BrokerHubConnectionsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+
+	return &result
 }

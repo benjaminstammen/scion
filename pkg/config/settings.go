@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/util"
@@ -115,6 +116,13 @@ type CLIConfig struct {
 	AutoHelp *bool `json:"autohelp,omitempty" yaml:"autohelp,omitempty" koanf:"autohelp"`
 }
 
+// HubConnectionConfig defines settings for a named hub connection.
+// These are written during broker registration and used to track
+// the hub connections this broker has registered with.
+type HubConnectionConfig struct {
+	Endpoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty" koanf:"endpoint"`
+}
+
 type Settings struct {
 	GroveID         string                   `json:"grove_id,omitempty" yaml:"grove_id,omitempty" koanf:"grove_id"`
 	ActiveProfile   string                   `json:"active_profile" yaml:"active_profile" koanf:"active_profile"`
@@ -122,9 +130,10 @@ type Settings struct {
 	Bucket          *BucketConfig            `json:"bucket,omitempty" yaml:"bucket,omitempty" koanf:"bucket"`
 	Hub             *HubClientConfig         `json:"hub,omitempty" yaml:"hub,omitempty" koanf:"hub"`
 	CLI             *CLIConfig               `json:"cli,omitempty" yaml:"cli,omitempty" koanf:"cli"`
-	Runtimes        map[string]RuntimeConfig `json:"runtimes" yaml:"runtimes" koanf:"runtimes"`
-	Harnesses       map[string]HarnessConfig `json:"harnesses" yaml:"harnesses" koanf:"harnesses"`
-	Profiles        map[string]ProfileConfig `json:"profiles" yaml:"profiles" koanf:"profiles"`
+	HubConnections  map[string]HubConnectionConfig `json:"hub_connections,omitempty" yaml:"hub_connections,omitempty" koanf:"hub_connections"`
+	Runtimes        map[string]RuntimeConfig       `json:"runtimes" yaml:"runtimes" koanf:"runtimes"`
+	Harnesses       map[string]HarnessConfig       `json:"harnesses" yaml:"harnesses" koanf:"harnesses"`
+	Profiles        map[string]ProfileConfig       `json:"profiles" yaml:"profiles" koanf:"profiles"`
 }
 
 func (s *Settings) ResolveRuntime(profileName string) (RuntimeConfig, string, error) {
@@ -336,6 +345,20 @@ func MergeSettings(base *Settings, data []byte) error {
 		}
 		if override.CLI.AutoHelp != nil {
 			base.CLI.AutoHelp = override.CLI.AutoHelp
+		}
+	}
+
+	// Merge hub_connections map
+	if override.HubConnections != nil {
+		if base.HubConnections == nil {
+			base.HubConnections = make(map[string]HubConnectionConfig)
+		}
+		for k, v := range override.HubConnections {
+			existing := base.HubConnections[k]
+			if v.Endpoint != "" {
+				existing.Endpoint = v.Endpoint
+			}
+			base.HubConnections[k] = existing
 		}
 	}
 
@@ -635,7 +658,28 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 		autohelp := value == "true"
 		current.CLI.AutoHelp = &autohelp
 	default:
-		return fmt.Errorf("unknown or complex setting key: %s (manual edit recommended for registries)", key)
+		// Handle hub_connections.<name>.endpoint keys
+		if strings.HasPrefix(key, "hub_connections.") {
+			parts := strings.SplitN(key, ".", 3)
+			if len(parts) != 3 {
+				return fmt.Errorf("invalid hub_connections key: %s (expected hub_connections.<name>.<field>)", key)
+			}
+			connName := parts[1]
+			field := parts[2]
+
+			if field != "endpoint" {
+				return fmt.Errorf("unknown hub_connections field: %s (supported: endpoint)", field)
+			}
+
+			if current.HubConnections == nil {
+				current.HubConnections = make(map[string]HubConnectionConfig)
+			}
+			conn := current.HubConnections[connName]
+			conn.Endpoint = value
+			current.HubConnections[connName] = conn
+		} else {
+			return fmt.Errorf("unknown or complex setting key: %s (manual edit recommended for registries)", key)
+		}
 	}
 
 	// Save as YAML
@@ -746,6 +790,20 @@ func GetSettingValue(s *Settings, key string) (string, error) {
 		}
 		return "", nil
 	}
+
+	// Handle hub_connections.<name>.endpoint keys
+	if strings.HasPrefix(key, "hub_connections.") {
+		parts := strings.SplitN(key, ".", 3)
+		if len(parts) == 3 && parts[2] == "endpoint" {
+			if s.HubConnections != nil {
+				if conn, ok := s.HubConnections[parts[1]]; ok {
+					return conn.Endpoint, nil
+				}
+			}
+			return "", nil
+		}
+	}
+
 	return "", fmt.Errorf("unknown or complex setting key: %s", key)
 }
 
@@ -799,6 +857,9 @@ func GetSettingsMap(s *Settings) map[string]string {
 			}
 		}
 	}
+	for name, conn := range s.HubConnections {
+		m["hub_connections."+name+".endpoint"] = conn.Endpoint
+	}
 	return m
 }
 
@@ -831,4 +892,70 @@ func (s *Settings) IsHubExplicitlyDisabled() bool {
 // When true, Hub sync checks will error with guidance to use --no-hub.
 func (s *Settings) IsHubLocalOnly() bool {
 	return s.Hub != nil && s.Hub.LocalOnly != nil && *s.Hub.LocalOnly
+}
+
+// DeleteHubConnection removes a hub connection entry from settings at the specified scope.
+// It loads the existing settings file, removes the named connection, and saves.
+func DeleteHubConnection(grovePath string, name string, global bool) error {
+	var dir string
+	if global {
+		globalDir, err := GetGlobalDir()
+		if err != nil {
+			return err
+		}
+		dir = globalDir
+	} else {
+		if grovePath == "" {
+			return fmt.Errorf("grove path required for local settings")
+		}
+		dir = grovePath
+	}
+
+	existingPath := GetSettingsPath(dir)
+	targetPath := filepath.Join(dir, "settings.yaml")
+
+	var current Settings
+	if existingPath != "" {
+		data, err := os.ReadFile(existingPath)
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err == nil {
+			if filepath.Ext(existingPath) == ".json" {
+				if err := util.UnmarshalJSONC(data, &current); err != nil {
+					return fmt.Errorf("failed to parse existing settings at %s: %w", existingPath, err)
+				}
+			} else {
+				if err := yaml.Unmarshal(data, &current); err != nil {
+					return fmt.Errorf("failed to parse existing settings at %s: %w", existingPath, err)
+				}
+			}
+		}
+	}
+
+	if current.HubConnections != nil {
+		delete(current.HubConnections, name)
+		// Clean up empty map
+		if len(current.HubConnections) == 0 {
+			current.HubConnections = nil
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		return err
+	}
+	newData, err := yaml.Marshal(current)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(targetPath, newData, 0644); err != nil {
+		return err
+	}
+
+	// If we migrated from JSON, remove the old JSON file
+	if existingPath != "" && existingPath != targetPath && filepath.Ext(existingPath) == ".json" {
+		_ = os.Remove(existingPath)
+	}
+
+	return nil
 }
