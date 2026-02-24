@@ -1,7 +1,7 @@
 # Hub-Native Groves: Filesystem-Based Workspaces on the Hub
 
 **Created:** 2026-02-23
-**Status:** Draft
+**Status:** Partially-implemented
 **Related:** `git-groves.md`, `sync-design.md`, `hosted-architecture.md`
 
 ---
@@ -246,6 +246,7 @@ When bind-mounting grove directories into agent containers, standard container i
 ## 9. Implementation Phases
 
 ### Phase 1: Minimal Hub-Native Grove
+completed
 
 - Hub API accepts grove creation with no `gitRemote`.
 - Hub creates `~/.scion/groves/<slug>/` directory with `InitProject()`.
@@ -255,6 +256,7 @@ When bind-mounting grove directories into agent containers, standard container i
 - Grove card glyph distinguishing git-based and folder-based groves.
 
 ### Phase 2: Remote Broker Support
+completed
 
 - Hub uploads workspace to GCS for remote broker provisioning.
 - Remote broker creates workspace at `~/.scion/groves/<slug>/`.
@@ -262,12 +264,14 @@ When bind-mounting grove directories into agent containers, standard container i
 - Workspace sync back from agents to Hub filesystem.
 
 ### Phase 3: Workspace Content Seeding
+completed
 
 - Web UI allows uploading initial files into a hub-native grove.
 - Hub API endpoint for uploading files to a grove's workspace.
 - Optional starter templates for common project types.
 
 ### Phase 4: Grove Promotion
+pending
 
 - Convert a hub-native grove to a git-anchored grove.
 - Initialize git, add remote, push existing content.
