@@ -104,6 +104,7 @@ func (m *mockHubClient) Users() hubclient.UserService                    { retur
 func (m *mockHubClient) Env() hubclient.EnvService                       { return nil }
 func (m *mockHubClient) Secrets() hubclient.SecretService                { return nil }
 func (m *mockHubClient) Auth() hubclient.AuthService                     { return nil }
+func (m *mockHubClient) Notifications() hubclient.NotificationService     { return nil }
 func (m *mockHubClient) Health(ctx context.Context) (*hubclient.HealthResponse, error) {
 	return nil, nil
 }

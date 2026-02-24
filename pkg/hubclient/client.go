@@ -61,6 +61,9 @@ type Client interface {
 	// Auth returns the authentication operations interface.
 	Auth() AuthService
 
+	// Notifications returns the notification operations interface.
+	Notifications() NotificationService
+
 	// Health checks API availability.
 	Health(ctx context.Context) (*HealthResponse, error)
 }
@@ -79,6 +82,7 @@ type client struct {
 	env            *envService
 	secrets        *secretService
 	authService    *authService
+	notifications  *notificationService
 }
 
 // New creates a new Hub API client.
@@ -102,6 +106,7 @@ func New(baseURL string, opts ...Option) (Client, error) {
 	c.env = &envService{c: c}
 	c.secrets = &secretService{c: c}
 	c.authService = &authService{c: c}
+	c.notifications = &notificationService{c: c}
 
 	return c, nil
 }
@@ -159,6 +164,11 @@ func (c *client) Secrets() SecretService {
 // Auth returns the authentication operations interface.
 func (c *client) Auth() AuthService {
 	return c.authService
+}
+
+// Notifications returns the notification operations interface.
+func (c *client) Notifications() NotificationService {
+	return c.notifications
 }
 
 // Health checks API availability.
