@@ -179,6 +179,58 @@ export interface Template {
 /**
  * Runtime Broker status enumeration
  */
+/**
+ * Scope for environment variables and secrets
+ */
+export type ResourceScope = 'user' | 'grove' | 'runtime_broker';
+
+/**
+ * Injection mode for environment variables
+ */
+export type InjectionMode = 'always' | 'as_needed';
+
+/**
+ * Environment variable from the Hub API (GET /api/v1/env)
+ */
+export interface EnvVar {
+  id: string;
+  key: string;
+  value: string;
+  scope: ResourceScope;
+  scopeId: string;
+  description?: string;
+  sensitive: boolean;
+  injectionMode: InjectionMode;
+  secret: boolean;
+  created: string;
+  updated: string;
+  createdBy?: string;
+}
+
+/**
+ * Secret type enumeration
+ */
+export type SecretType = 'environment' | 'variable' | 'file';
+
+/**
+ * Secret metadata from the Hub API (GET /api/v1/secrets)
+ * Note: secret values are never returned from the API
+ */
+export interface Secret {
+  id: string;
+  key: string;
+  secretType: SecretType;
+  target?: string;
+  scope: ResourceScope;
+  scopeId: string;
+  description?: string;
+  version: number;
+  created: string;
+  updated: string;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
 export type BrokerStatus = 'online' | 'offline' | 'degraded';
 
 /**

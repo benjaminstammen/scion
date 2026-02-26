@@ -72,8 +72,14 @@ import '../components/pages/brokers.js';
 import '../components/pages/admin-users.js';
 import '../components/pages/admin-groups.js';
 import '../components/pages/admin-group-detail.js';
+import '../components/pages/profile-env-vars.js';
+import '../components/pages/profile-secrets.js';
 import '../components/pages/not-found.js';
 import '../components/pages/login.js';
+
+// Profile shell
+import '../components/profile/profile-shell.js';
+import '../components/profile/profile-nav.js';
 
 /** Current authenticated user, fetched once on init */
 let currentUser: User | null = null;
@@ -111,6 +117,9 @@ const ROUTES: { pattern: RegExp; tag: string }[] = [
   { pattern: /^\/admin\/users$/, tag: 'scion-page-admin-users' },
   { pattern: /^\/admin\/groups$/, tag: 'scion-page-admin-groups' },
   { pattern: /^\/admin\/groups\/[^/]+$/, tag: 'scion-page-admin-group-detail' },
+  { pattern: /^\/profile\/env$/, tag: 'scion-page-profile-env-vars' },
+  { pattern: /^\/profile\/secrets$/, tag: 'scion-page-profile-secrets' },
+  { pattern: /^\/profile$/, tag: 'scion-page-profile-env-vars' },
   { pattern: /^\/groves\/new$/, tag: 'scion-page-grove-create' },
   { pattern: /^\/groves\/[^/]+\/settings$/, tag: 'scion-page-grove-settings' },
   { pattern: /^\/groves\/[^/]+$/, tag: 'scion-page-grove-detail' },
@@ -123,6 +132,11 @@ const ROUTES: { pattern: RegExp; tag: string }[] = [
  * Routes that render without the app shell (full-page layout)
  */
 const STANDALONE_ROUTES = new Set(['scion-login-page']);
+
+/**
+ * Routes that render inside the profile shell instead of the main app shell
+ */
+const PROFILE_ROUTES = new Set(['scion-page-profile-env-vars', 'scion-page-profile-secrets']);
 
 /**
  * Initialize the client-side application
@@ -175,6 +189,10 @@ async function init(): Promise<void> {
     customElements.whenDefined('scion-page-admin-users'),
     customElements.whenDefined('scion-page-admin-groups'),
     customElements.whenDefined('scion-page-admin-group-detail'),
+    customElements.whenDefined('scion-page-profile-env-vars'),
+    customElements.whenDefined('scion-page-profile-secrets'),
+    customElements.whenDefined('scion-profile-shell'),
+    customElements.whenDefined('scion-profile-nav'),
     customElements.whenDefined('scion-page-404'),
     customElements.whenDefined('scion-login-page'),
   ]);
@@ -241,6 +259,17 @@ function renderRoute(path: string): void {
     // Standalone pages render without the app shell
     const page = document.createElement(tag);
     appContainer.appendChild(page);
+  } else if (PROFILE_ROUTES.has(tag)) {
+    // Profile pages render inside the profile shell
+    const shell = document.createElement('scion-profile-shell') as HTMLElement & {
+      currentPath: string;
+      user: User | null;
+    };
+    shell.currentPath = path;
+    shell.user = currentUser;
+    const page = document.createElement(tag);
+    shell.appendChild(page);
+    appContainer.appendChild(shell);
   } else {
     // Wrapped pages render inside the app shell
     const shell = document.createElement('scion-app') as HTMLElement & {

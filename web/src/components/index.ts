@@ -38,5 +38,11 @@ export { ScionPageGroveCreate } from './pages/grove-create.js';
 export { ScionPageBrokers } from './pages/brokers.js';
 export { ScionPageAdminUsers } from './pages/admin-users.js';
 export { ScionPageAdminGroups } from './pages/admin-groups.js';
+export { ScionPageProfileEnvVars } from './pages/profile-env-vars.js';
+export { ScionPageProfileSecrets } from './pages/profile-secrets.js';
 export { ScionPage404 } from './pages/not-found.js';
 export { ScionLoginPage } from './pages/login.js';
+
+// Profile shell
+export { ScionProfileShell } from './profile/profile-shell.js';
+export { ScionProfileNav } from './profile/profile-nav.js';
