@@ -349,6 +349,12 @@ func NewWebServer(cfg WebServerConfig) *WebServer {
 		slog.Error("Failed to create session directory", "dir", sessionDir, "error", err)
 	}
 	fsStore := sessions.NewFilesystemStore(sessionDir, []byte(sessionKey))
+	// Remove the default 4096-byte securecookie encoding limit. The
+	// FilesystemStore writes session data to disk (not cookies), so the
+	// browser cookie-size cap is irrelevant. JWT tokens stored in the
+	// session regularly exceed 4096 bytes after gob+base64 encoding,
+	// which causes Save() to fail and tokens to be silently dropped.
+	fsStore.MaxLength(0)
 	fsStore.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400, // 24 hours
@@ -468,7 +474,9 @@ func (ws *WebServer) sessionToBearerMiddleware(next http.Handler) http.Handler {
 						session.Values[sessKeyHubAccessToken] = newAccess
 						session.Values[sessKeyHubRefreshToken] = newRefresh
 						session.Values[sessKeyHubTokenExpiry] = time.Now().Add(time.Duration(expiresIn) * time.Second).UnixMilli()
-						_ = session.Save(r, w)
+						if err := session.Save(r, w); err != nil {
+							slog.Warn("Failed to persist refreshed Hub token to session", "error", err)
+						}
 					} else {
 						slog.Debug("Failed to refresh Hub token", "error", err)
 						// Fall through with expired token; Hub auth will reject it.
@@ -1103,17 +1111,9 @@ func (ws *WebServer) handleOAuthCallback(w http.ResponseWriter, r *http.Request)
 	delete(session.Values, sessKeyReturnTo)
 
 	if err := session.Save(r, w); err != nil {
-		slog.Warn("Failed to save session after OAuth callback, retrying without tokens", "error", err)
-		// The most likely cause is cookie size overflow from large JWT tokens.
-		// Drop the tokens and try again so the user can still log in.
-		delete(session.Values, sessKeyHubAccessToken)
-		delete(session.Values, sessKeyHubRefreshToken)
-		delete(session.Values, sessKeyHubTokenExpiry)
-		if err2 := session.Save(r, w); err2 != nil {
-			slog.Error("Failed to save session even without tokens", "error", err2)
-			http.Redirect(w, r, "/login?error=session_error", http.StatusFound)
-			return
-		}
+		slog.Error("Failed to save session after OAuth callback", "error", err)
+		http.Redirect(w, r, "/login?error=session_error", http.StatusFound)
+		return
 	}
 
 	if returnTo == "" {
@@ -1217,11 +1217,12 @@ func (ws *WebServer) handleAuthDebug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	debug := map[string]interface{}{
-		"sessionIsNew": session.IsNew,
-		"hasUser":      session.Values[sessKeyUserID] != nil,
+		"sessionIsNew":   session.IsNew,
+		"hasUser":        session.Values[sessKeyUserID] != nil,
+		"hasAccessToken": session.Values[sessKeyHubAccessToken] != nil,
 		"config": map[string]interface{}{
-			"baseURL":        ws.config.BaseURL,
-			"devAuthEnabled": ws.config.DevAuthToken != "",
+			"baseURL":         ws.config.BaseURL,
+			"devAuthEnabled":  ws.config.DevAuthToken != "",
 			"oauthConfigured": ws.oauthService != nil,
 			"storeConfigured": ws.store != nil,
 		},

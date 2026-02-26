@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gorilla/securecookie"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1056,6 +1057,22 @@ func TestSessionStore_CookieConfiguration(t *testing.T) {
 	})
 	assert.False(t, ws2.sessionStore.Options.Secure,
 		"HTTP base URL should produce non-secure cookies")
+}
+
+func TestSessionStore_NoMaxLengthLimit(t *testing.T) {
+	// The FilesystemStore stores data on disk, not in cookies, so the default
+	// securecookie 4096-byte limit must be removed. JWT tokens in the session
+	// regularly exceed that limit after gob+base64 encoding.
+	ws := newTestWebServer(t, WebServerConfig{})
+	for _, codec := range ws.sessionStore.Codecs {
+		if sc, ok := codec.(*securecookie.SecureCookie); ok {
+			// Encode a large value — if MaxLength were still 4096 this would fail.
+			large := make(map[interface{}]interface{})
+			large["token"] = string(make([]byte, 8000))
+			_, err := securecookie.EncodeMulti("test", large, sc)
+			assert.NoError(t, err, "session store should allow values larger than 4096 bytes")
+		}
+	}
 }
 
 func TestSetters(t *testing.T) {
