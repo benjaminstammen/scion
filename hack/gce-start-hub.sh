@@ -57,6 +57,51 @@ if [ -f ".scratch/hub.env" ]; then
     gcloud compute ssh "${INSTANCE_NAME}" --zone="${ZONE}" --command "sudo mv /tmp/hub.env /home/scion/.scion/hub.env && sudo chown scion:scion /home/scion/.scion/hub.env && sudo chmod 600 /home/scion/.scion/hub.env"
 fi
 
+# Deploy settings.yaml for agent-side telemetry (only if it doesn't already exist)
+TMP_SETTINGS=$(mktemp)
+cat <<'SETTINGS_EOF' > "$TMP_SETTINGS"
+schema_version: "1"
+hub:
+  endpoint: "https://hub.demo.scion-ai.dev"
+telemetry:
+  enabled: true
+  cloud:
+    enabled: true
+    endpoint: "cloudtrace.googleapis.com:443"
+    protocol: "grpc"
+    batch:
+      max_size: 256
+      timeout: "5s"
+  local:
+    enabled: true
+  filter:
+    events:
+      exclude:
+        - "agent.user.prompt"
+    attributes:
+      redact:
+        - "prompt"
+        - "user.email"
+        - "tool_output"
+        - "tool_input"
+      hash:
+        - "session_id"
+SETTINGS_EOF
+
+gcloud compute scp "$TMP_SETTINGS" "${INSTANCE_NAME}:/tmp/scion-settings.yaml" --zone="${ZONE}"
+rm "$TMP_SETTINGS"
+
+# Only install settings.yaml if one doesn't already exist (avoid clobbering manual edits)
+gcloud compute ssh "${INSTANCE_NAME}" --zone="${ZONE}" --command \
+    'if [ ! -f /home/scion/.scion/settings.yaml ]; then
+        sudo mv /tmp/scion-settings.yaml /home/scion/.scion/settings.yaml
+        sudo chown scion:scion /home/scion/.scion/settings.yaml
+        echo "Deployed settings.yaml for agent telemetry."
+    else
+        echo "settings.yaml already exists, skipping (remove to re-deploy)."
+        rm -f /tmp/scion-settings.yaml
+    fi'
+
 # We use a temp file locally to avoid escaping hell on gcloud compute ssh
 TMP_SERVICE=$(mktemp)
 printf "[Unit]
@@ -69,6 +114,11 @@ Group=scion
 WorkingDirectory=%s
 EnvironmentFile=/home/scion/.scion/hub.env
 Environment=\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"
+Environment=\"SCION_CLOUD_LOGGING=true\"
+Environment=\"SCION_GCP_PROJECT_ID=${PROJECT_ID}\"
+Environment=\"GOOGLE_CLOUD_PROJECT=${PROJECT_ID}\"
+Environment=\"SCION_OTEL_ENDPOINT=cloudtrace.googleapis.com:443\"
+Environment=\"SCION_OTEL_LOG_ENABLED=true\"
 # Use journald for log management
 StandardOutput=journal
 StandardError=journal

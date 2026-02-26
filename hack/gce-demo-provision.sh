@@ -71,6 +71,7 @@ echo "Enabling required Google Cloud APIs..."
 gcloud services enable \
     cloudtrace.googleapis.com \
     cloudmonitoring.googleapis.com \
+    logging.googleapis.com \
     --project "${PROJECT_ID}"
 
 # Prompt for size
