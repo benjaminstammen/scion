@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -156,7 +157,7 @@ func TestBuildAgentEnv(t *testing.T) {
 		"EMPTY_EXTRA_KEY": "", // Should be omitted
 	}
 
-	env, warnings := buildAgentEnv(scionCfg, extraEnv)
+	env, warnings, missingKeys := buildAgentEnv(scionCfg, extraEnv)
 
 	expected := map[string]string{
 		"NORMAL_KEY":    "normal-value",
@@ -180,6 +181,10 @@ func TestBuildAgentEnv(t *testing.T) {
 		t.Errorf("expected 3 warnings, got %d: %v", len(warnings), warnings)
 	}
 
+	if len(missingKeys) != 3 {
+		t.Errorf("expected 3 missing keys, got %d: %v", len(missingKeys), missingKeys)
+	}
+
 	for k, v := range expected {
 		if envMap[k] != v {
 			t.Errorf("expected env[%s] = %q, got %q", k, v, envMap[k])
@@ -192,6 +197,32 @@ func TestBuildAgentEnv(t *testing.T) {
 		if _, ok := envMap[k]; ok {
 			t.Errorf("expected key %s to be omitted, but it was present", k)
 		}
+	}
+}
+
+func TestBuildAgentEnv_MissingKeysReturned(t *testing.T) {
+	// Verify that buildAgentEnv returns the names of keys that could not
+	// be resolved, so the caller can treat them as errors.
+	scionCfg := &api.ScionConfig{
+		Env: map[string]string{
+			"GOOD_KEY":    "good-value",
+			"MISSING_ONE": "",
+			"MISSING_TWO": "",
+		},
+	}
+
+	env, _, missingKeys := buildAgentEnv(scionCfg, nil)
+
+	if len(env) != 1 {
+		t.Errorf("expected 1 env var, got %d: %v", len(env), env)
+	}
+	if len(missingKeys) != 2 {
+		t.Fatalf("expected 2 missing keys, got %d: %v", len(missingKeys), missingKeys)
+	}
+
+	sort.Strings(missingKeys)
+	if missingKeys[0] != "MISSING_ONE" || missingKeys[1] != "MISSING_TWO" {
+		t.Errorf("unexpected missing keys: %v", missingKeys)
 	}
 }
 
@@ -209,7 +240,7 @@ func TestBuildAgentEnv_EmptyValuePassthrough(t *testing.T) {
 		},
 	}
 
-	env, warnings := buildAgentEnv(scionCfg, nil)
+	env, warnings, missingKeys := buildAgentEnv(scionCfg, nil)
 
 	envMap := make(map[string]string)
 	for _, e := range env {
@@ -233,6 +264,9 @@ func TestBuildAgentEnv_EmptyValuePassthrough(t *testing.T) {
 	if len(warnings) != 1 {
 		t.Errorf("expected 1 warning, got %d: %v", len(warnings), warnings)
 	}
+	if len(missingKeys) != 1 {
+		t.Errorf("expected 1 missing key, got %d: %v", len(missingKeys), missingKeys)
+	}
 }
 
 func TestBuildAgentEnv_ScionExtraPath(t *testing.T) {
@@ -245,7 +279,7 @@ func TestBuildAgentEnv_ScionExtraPath(t *testing.T) {
 		},
 	}
 
-	env, warnings := buildAgentEnv(scionCfg, nil)
+	env, warnings, _ := buildAgentEnv(scionCfg, nil)
 
 	envMap := make(map[string]string)
 	for _, e := range env {
@@ -290,7 +324,7 @@ func TestBuildAgentEnv_HubEndpointOverride(t *testing.T) {
 			extraEnv["SCION_HUB_URL"] = scionCfg.Hub.Endpoint
 		}
 
-		env, _ := buildAgentEnv(scionCfg, extraEnv)
+		env, _, _ := buildAgentEnv(scionCfg, extraEnv)
 
 		envMap := make(map[string]string)
 		for _, e := range env {
@@ -315,7 +349,7 @@ func TestBuildAgentEnv_HubEndpointOverride(t *testing.T) {
 			"SCION_HUB_URL":     "https://hub.example.com",
 		}
 
-		env, _ := buildAgentEnv(scionCfg, extraEnv)
+		env, _, _ := buildAgentEnv(scionCfg, extraEnv)
 
 		envMap := make(map[string]string)
 		for _, e := range env {
@@ -683,7 +717,7 @@ func TestBuildAgentEnv_TelemetryInjection(t *testing.T) {
 		}
 	}
 
-	env, _ := buildAgentEnv(scionCfg, opts)
+	env, _, _ := buildAgentEnv(scionCfg, opts)
 
 	envMap := make(map[string]string)
 	for _, e := range env {
@@ -1028,7 +1062,7 @@ func TestBuildAgentEnv_TelemetryNoOverrideExplicit(t *testing.T) {
 		}
 	}
 
-	env, _ := buildAgentEnv(scionCfg, opts)
+	env, _, _ := buildAgentEnv(scionCfg, opts)
 
 	envMap := make(map[string]string)
 	for _, e := range env {
@@ -1061,7 +1095,7 @@ func TestBuildAgentEnv_HubEnvVarsSurviveMerge(t *testing.T) {
 		"SCION_AGENT_NAME":           "test-agent",
 	}
 
-	env, _ := buildAgentEnv(scionCfg, extraEnv)
+	env, _, _ := buildAgentEnv(scionCfg, extraEnv)
 
 	envMap := make(map[string]string)
 	for _, e := range env {
@@ -1302,7 +1336,7 @@ func TestBuildAgentEnv_EnvKeyScionHubEndpointOverride(t *testing.T) {
 			}
 		}
 
-		env, _ := buildAgentEnv(scionCfg, extraEnv)
+		env, _, _ := buildAgentEnv(scionCfg, extraEnv)
 
 		envMap := make(map[string]string)
 		for _, e := range env {
@@ -1350,7 +1384,7 @@ func TestBuildAgentEnv_EnvKeyScionHubEndpointOverride(t *testing.T) {
 			}
 		}
 
-		env, _ := buildAgentEnv(scionCfg, extraEnv)
+		env, _, _ := buildAgentEnv(scionCfg, extraEnv)
 
 		envMap := make(map[string]string)
 		for _, e := range env {

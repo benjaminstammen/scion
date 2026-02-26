@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -379,7 +380,12 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}
 	}
 
-	agentEnv, envWarnings := buildAgentEnv(finalScionCfg, opts.Env)
+	agentEnv, envWarnings, missingEnvKeys := buildAgentEnv(finalScionCfg, opts.Env)
+	if len(missingEnvKeys) > 0 {
+		sort.Strings(missingEnvKeys)
+		return nil, fmt.Errorf("cannot start agent: %d required environment variable(s) have no value: %s",
+			len(missingEnvKeys), strings.Join(missingEnvKeys, ", "))
+	}
 	warnings = append(warnings, envWarnings...)
 
 	// Determine the effective workspace path. If agentWorkspace is empty but we have
@@ -539,9 +545,10 @@ func filterWorkspaceVolume(volumes []api.VolumeMount) []api.VolumeMount {
 	return filtered
 }
 
-func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) ([]string, []string) {
+func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) ([]string, []string, []string) {
 	combined := make(map[string]string)
 	var warnings []string
+	var missingKeys []string
 
 	if scionCfg != nil && scionCfg.Env != nil {
 		for k, v := range scionCfg.Env {
@@ -576,12 +583,13 @@ func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) ([]str
 	agentEnv := []string{}
 	for k, v := range combined {
 		if v == "" {
+			missingKeys = append(missingKeys, k)
 			warnings = append(warnings, fmt.Sprintf("Warning: Environment variable '%s' has no value and will be omitted.", k))
 			continue
 		}
 		agentEnv = append(agentEnv, fmt.Sprintf("%s=%s", k, v))
 	}
-	return agentEnv, warnings
+	return agentEnv, warnings, missingKeys
 }
 
 // startDurationTimer spawns a goroutine that stops the container after the given duration.
