@@ -87,6 +87,65 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestValidateAgentName(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantSlug  string
+		wantError bool
+	}{
+		{
+			name:      "valid simple name",
+			input:     "my-agent",
+			wantSlug:  "my-agent",
+			wantError: false,
+		},
+		{
+			name:      "valid name with spaces",
+			input:     "My Agent",
+			wantSlug:  "my-agent",
+			wantError: false,
+		},
+		{
+			name:      "empty string",
+			input:     "",
+			wantSlug:  "",
+			wantError: true,
+		},
+		{
+			name:      "all special characters",
+			input:     "!@#$%^&*()",
+			wantSlug:  "",
+			wantError: true,
+		},
+		{
+			name:      "problematic name with special chars and slashes",
+			input:     "slug Stres$@ . / test",
+			wantSlug:  "slug-stres-test",
+			wantError: false,
+		},
+		{
+			name:      "only spaces",
+			input:     "   ",
+			wantSlug:  "",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			slug, err := ValidateAgentName(tt.input)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateAgentName(%q) error = %v, wantError %v", tt.input, err, tt.wantError)
+				return
+			}
+			if slug != tt.wantSlug {
+				t.Errorf("ValidateAgentName(%q) slug = %q, want %q", tt.input, slug, tt.wantSlug)
+			}
+		})
+	}
+}
+
 func TestSlugifyLengthLimit(t *testing.T) {
 	longInput := strings.Repeat("a", 100)
 	result := Slugify(longInput)

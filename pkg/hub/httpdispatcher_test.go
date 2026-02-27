@@ -196,9 +196,10 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate(t *testing.T) {
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
 
 	agent := &store.Agent{
-		ID:            "agent-1",
-		Name:          "test-agent",
-		GroveID:       "grove-1",
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
+		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
 			HarnessConfig: "claude",
@@ -237,8 +238,9 @@ func TestHTTPAgentDispatcher_DispatchAgentStop(t *testing.T) {
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
 
 	agent := &store.Agent{
-		ID:            "agent-1",
-		Name:          "test-agent",
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
 		RuntimeBrokerID: "host-1",
 	}
 
@@ -273,8 +275,9 @@ func TestHTTPAgentDispatcher_DispatchAgentDelete(t *testing.T) {
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
 
 	agent := &store.Agent{
-		ID:            "agent-1",
-		Name:          "test-agent",
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
 		RuntimeBrokerID: "host-1",
 	}
 
@@ -312,8 +315,9 @@ func TestHTTPAgentDispatcher_DispatchAgentMessage(t *testing.T) {
 	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
 
 	agent := &store.Agent{
-		ID:            "agent-1",
-		Name:          "test-agent",
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
 		RuntimeBrokerID: "host-1",
 	}
 
@@ -2094,5 +2098,147 @@ func TestBuildCreateRequest_PropagatesHarnessName(t *testing.T) {
 	}
 	if req.Config.HarnessConfig != "gemini" {
 		t.Errorf("expected HarnessConfig 'gemini', got '%s'", req.Config.HarnessConfig)
+	}
+}
+
+// Tests verifying that the dispatcher sends agent.Slug (not agent.Name) to the broker.
+
+func TestHTTPAgentDispatcher_DispatchAgentStop_UsesSlugNotName(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "My Special Agent!",
+		Slug:            "my-special-agent",
+		RuntimeBrokerID: "host-1",
+	}
+
+	err := dispatcher.DispatchAgentStop(ctx, agent)
+	if err != nil {
+		t.Fatalf("DispatchAgentStop failed: %v", err)
+	}
+
+	if mockClient.lastAgentID != "my-special-agent" {
+		t.Errorf("expected slug 'my-special-agent' to be dispatched, got '%s'", mockClient.lastAgentID)
+	}
+}
+
+func TestHTTPAgentDispatcher_DispatchAgentDelete_UsesSlugNotName(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "slug Stres$@ . / test",
+		Slug:            "slug-stres-test",
+		RuntimeBrokerID: "host-1",
+	}
+
+	err := dispatcher.DispatchAgentDelete(ctx, agent, true, true, false, time.Time{})
+	if err != nil {
+		t.Fatalf("DispatchAgentDelete failed: %v", err)
+	}
+
+	if mockClient.lastAgentID != "slug-stres-test" {
+		t.Errorf("expected slug 'slug-stres-test' to be dispatched, got '%s'", mockClient.lastAgentID)
+	}
+}
+
+func TestHTTPAgentDispatcher_DispatchAgentRestart_UsesSlugNotName(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "My Special Agent!",
+		Slug:            "my-special-agent",
+		RuntimeBrokerID: "host-1",
+	}
+
+	err := dispatcher.DispatchAgentRestart(ctx, agent)
+	if err != nil {
+		t.Fatalf("DispatchAgentRestart failed: %v", err)
+	}
+
+	if mockClient.lastAgentID != "my-special-agent" {
+		t.Errorf("expected slug 'my-special-agent' to be dispatched, got '%s'", mockClient.lastAgentID)
+	}
+}
+
+func TestHTTPAgentDispatcher_DispatchAgentMessage_UsesSlugNotName(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false)
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "My Special Agent!",
+		Slug:            "my-special-agent",
+		RuntimeBrokerID: "host-1",
+	}
+
+	err := dispatcher.DispatchAgentMessage(ctx, agent, "hello", false)
+	if err != nil {
+		t.Fatalf("DispatchAgentMessage failed: %v", err)
+	}
+
+	if mockClient.lastAgentID != "my-special-agent" {
+		t.Errorf("expected slug 'my-special-agent' to be dispatched, got '%s'", mockClient.lastAgentID)
 	}
 }

@@ -426,11 +426,23 @@ func (c *ControlChannelClient) handleMessage(data []byte) error {
 }
 
 // handleRequest processes a tunneled HTTP request.
-func (c *ControlChannelClient) handleRequest(data []byte) error {
+func (c *ControlChannelClient) handleRequest(data []byte) (retErr error) {
 	var req wsprotocol.RequestEnvelope
 	if err := json.Unmarshal(data, &req); err != nil {
 		return fmt.Errorf("failed to parse request: %w", err)
 	}
+
+	// Recover from panics (e.g. httptest.NewRequest on malformed URLs) to
+	// prevent crashing the broker process. Send a 400 error back instead.
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Panic in control channel request handler", "panic", r, "method", req.Method, "path", req.Path)
+			resp := wsprotocol.NewResponseEnvelope(req.RequestID, http.StatusBadRequest, nil, []byte(fmt.Sprintf(`{"error":"request caused panic: %v"}`, r)))
+			if writeErr := c.conn.WriteJSON(resp); writeErr != nil {
+				retErr = fmt.Errorf("failed to send panic error response: %w", writeErr)
+			}
+		}
+	}()
 
 	if c.config.Debug {
 		slog.Debug("Control channel request", "method", req.Method, "path", req.Path)

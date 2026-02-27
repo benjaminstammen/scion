@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/util"
 )
 
@@ -88,20 +88,7 @@ func GetGroveName(projectDir string) string {
 		return "global"
 	}
 
-	return slugify(filepath.Base(parent))
-}
-
-func slugify(s string) string {
-	s = strings.ToLower(s)
-	var res strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			res.WriteRune(r)
-		} else {
-			res.WriteRune('-')
-		}
-	}
-	return strings.Trim(res.String(), "-")
+	return api.Slugify(filepath.Base(parent))
 }
 
 // GetTargetProjectDir returns the directory where a grove should be initialized.

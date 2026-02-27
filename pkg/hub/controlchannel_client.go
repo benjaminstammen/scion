@@ -66,7 +66,7 @@ func (c *ControlChannelBrokerClient) CreateAgent(ctx context.Context, brokerID, 
 // StartAgent starts an agent via control channel.
 func (c *ControlChannelBrokerClient) StartAgent(ctx context.Context, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig string, resolvedEnv map[string]string) (*RemoteAgentResponse, error) {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s/start", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/start", url.PathEscape(agentID))
 
 	payload := map[string]interface{}{}
 	if task != "" {
@@ -110,7 +110,7 @@ func (c *ControlChannelBrokerClient) StartAgent(ctx context.Context, brokerID, b
 // StopAgent stops an agent via control channel.
 func (c *ControlChannelBrokerClient) StopAgent(ctx context.Context, brokerID, brokerEndpoint, agentID string) error {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s/stop", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/stop", url.PathEscape(agentID))
 	_, err := c.doRequest(ctx, brokerID, "POST", path, "", nil)
 	return err
 }
@@ -118,7 +118,7 @@ func (c *ControlChannelBrokerClient) StopAgent(ctx context.Context, brokerID, br
 // RestartAgent restarts an agent via control channel.
 func (c *ControlChannelBrokerClient) RestartAgent(ctx context.Context, brokerID, brokerEndpoint, agentID string) error {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s/restart", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/restart", url.PathEscape(agentID))
 	_, err := c.doRequest(ctx, brokerID, "POST", path, "", nil)
 	return err
 }
@@ -126,7 +126,7 @@ func (c *ControlChannelBrokerClient) RestartAgent(ctx context.Context, brokerID,
 // DeleteAgent deletes an agent via control channel.
 func (c *ControlChannelBrokerClient) DeleteAgent(ctx context.Context, brokerID, brokerEndpoint, agentID string, deleteFiles, removeBranch, softDelete bool, deletedAt time.Time) error {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s", url.PathEscape(agentID))
 	query := fmt.Sprintf("deleteFiles=%t&removeBranch=%t", deleteFiles, removeBranch)
 	if softDelete {
 		query += fmt.Sprintf("&softDelete=true&deletedAt=%s", url.QueryEscape(deletedAt.Format(time.RFC3339)))
@@ -145,7 +145,7 @@ func (c *ControlChannelBrokerClient) DeleteAgent(ctx context.Context, brokerID, 
 // MessageAgent sends a message to an agent via control channel.
 func (c *ControlChannelBrokerClient) MessageAgent(ctx context.Context, brokerID, brokerEndpoint, agentID, message string, interrupt bool) error {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s/message", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/message", url.PathEscape(agentID))
 
 	body, err := json.Marshal(map[string]interface{}{
 		"message":   message,
@@ -162,7 +162,7 @@ func (c *ControlChannelBrokerClient) MessageAgent(ctx context.Context, brokerID,
 // CheckAgentPrompt checks if an agent has a non-empty prompt.md file via control channel.
 func (c *ControlChannelBrokerClient) CheckAgentPrompt(ctx context.Context, brokerID, brokerEndpoint, agentID string) (bool, error) {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s/has-prompt", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/has-prompt", url.PathEscape(agentID))
 
 	resp, err := c.doRequest(ctx, brokerID, "POST", path, "", nil)
 	if err != nil {
@@ -210,7 +210,7 @@ func (c *ControlChannelBrokerClient) CreateAgentWithGather(ctx context.Context, 
 // FinalizeEnv sends gathered env vars to a broker to complete agent creation via control channel.
 func (c *ControlChannelBrokerClient) FinalizeEnv(ctx context.Context, brokerID, brokerEndpoint, agentID string, env map[string]string) (*RemoteAgentResponse, error) {
 	_ = brokerEndpoint
-	path := fmt.Sprintf("/api/v1/agents/%s/finalize-env", agentID)
+	path := fmt.Sprintf("/api/v1/agents/%s/finalize-env", url.PathEscape(agentID))
 
 	body, err := json.Marshal(map[string]interface{}{
 		"env": env,

@@ -385,7 +385,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	// Check if the agent already exists (e.g. created via "scion create" for later start).
 	// If it exists in "created" status, start it instead of creating a duplicate.
 	// If it doesn't exist, fall through to create it.
-	slug := api.Slugify(req.Name)
+	slug, err := api.ValidateAgentName(req.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_name", err.Error(), nil)
+		return
+	}
 	existingAgent, err := s.store.GetAgentBySlug(ctx, req.GroveID, slug)
 	if err != nil && err != store.ErrNotFound {
 		writeErrorFromErr(w, err, "")
@@ -2458,7 +2462,11 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 	}
 
 	// Check if the agent already exists. Handle stale cleanup, restart, etc.
-	slug := api.Slugify(req.Name)
+	slug, err := api.ValidateAgentName(req.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_name", err.Error(), nil)
+		return
+	}
 	existingAgent, err := s.store.GetAgentBySlug(ctx, groveID, slug)
 	if err != nil && err != store.ErrNotFound {
 		writeErrorFromErr(w, err, "")

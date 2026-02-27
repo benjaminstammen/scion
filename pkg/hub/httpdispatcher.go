@@ -1067,7 +1067,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentStop(ctx context.Context, agent *stor
 		return err
 	}
 
-	return d.client.StopAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Name)
+	return d.client.StopAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug)
 }
 
 // DispatchAgentRestart restarts an agent on the runtime broker.
@@ -1081,7 +1081,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentRestart(ctx context.Context, agent *s
 		return err
 	}
 
-	return d.client.RestartAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Name)
+	return d.client.RestartAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug)
 }
 
 // DispatchAgentDelete deletes an agent from the runtime broker.
@@ -1095,7 +1095,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentDelete(ctx context.Context, agent *st
 		return err
 	}
 
-	return d.client.DeleteAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Name, deleteFiles, removeBranch, softDelete, deletedAt)
+	return d.client.DeleteAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug, deleteFiles, removeBranch, softDelete, deletedAt)
 }
 
 // DispatchAgentMessage sends a message to an agent on the runtime broker.
@@ -1109,7 +1109,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentMessage(ctx context.Context, agent *s
 		return err
 	}
 
-	return d.client.MessageAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Name, message, interrupt)
+	return d.client.MessageAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug, message, interrupt)
 }
 
 // DispatchCheckAgentPrompt checks if an agent has a non-empty prompt.md file.
@@ -1123,7 +1123,7 @@ func (d *HTTPAgentDispatcher) DispatchCheckAgentPrompt(ctx context.Context, agen
 		return false, err
 	}
 
-	return d.client.CheckAgentPrompt(ctx, agent.RuntimeBrokerID, endpoint, agent.Name)
+	return d.client.CheckAgentPrompt(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug)
 }
 
 // resolveSecrets queries secrets from all applicable scopes and merges them

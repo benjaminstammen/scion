@@ -15,6 +15,7 @@
 package api
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -69,6 +70,17 @@ func Slugify(s string) string {
 	}
 
 	return s
+}
+
+// ValidateAgentName validates an agent name by slugifying it and checking
+// that the result is non-empty. Returns the slug on success or an error
+// if the name produces an empty slug (e.g. empty input, all special characters).
+func ValidateAgentName(name string) (string, error) {
+	slug := Slugify(name)
+	if slug == "" {
+		return "", fmt.Errorf("agent name %q produces an empty slug: must contain at least one alphanumeric character", name)
+	}
+	return slug, nil
 }
 
 // SlugifyWithSuffix creates a slug with a collision-avoidance suffix.
