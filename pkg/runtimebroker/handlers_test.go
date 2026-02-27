@@ -1020,6 +1020,114 @@ func TestCreateAgentGroveHubEndpointSuppressedWhenDisabled(t *testing.T) {
 	})
 }
 
+// TestCreateAgentHubNativeGroveSettingsEndpoint tests that createAgent with a
+// hub-native grove (GroveSlug set, no GrovePath) correctly resolves the grove
+// path and uses grove settings hub.endpoint from the .scion subdirectory.
+func TestCreateAgentHubNativeGroveSettingsEndpoint(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+	cfg.HubEndpoint = "http://localhost:9810" // broker's default (combo mode)
+	cfg.Debug = true
+
+	mgr := &envCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	// Set up a hub-native grove directory at the expected path.
+	// The slug "my-hub-grove" will resolve to ~/.scion/groves/my-hub-grove.
+	globalDir, err := config.GetGlobalDir()
+	if err != nil {
+		t.Fatalf("failed to get global dir: %v", err)
+	}
+	grovePath := filepath.Join(globalDir, "groves", "settings-test-grove")
+	scionDir := filepath.Join(grovePath, ".scion")
+	if err := os.MkdirAll(scionDir, 0755); err != nil {
+		t.Fatalf("failed to create .scion dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(grovePath) })
+
+	// Place settings.yaml in the .scion subdirectory (hub-native grove layout)
+	settingsContent := "hub:\n  endpoint: https://hub.external.example.com\n"
+	if err := os.WriteFile(filepath.Join(scionDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
+		t.Fatalf("failed to write settings.yaml: %v", err)
+	}
+
+	// Send createAgent request with groveSlug but no grovePath
+	body := `{
+		"name": "hub-native-agent",
+		"groveSlug": "settings-test-grove",
+		"hubEndpoint": "http://localhost:9810",
+		"config": {"template": "claude"}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	if mgr.lastEnv == nil {
+		t.Fatal("expected environment variables to be set")
+	}
+
+	// Grove settings hub.endpoint should override the broker's localhost endpoint
+	if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "https://hub.external.example.com" {
+		t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.external.example.com' from hub-native grove settings, got %q", got)
+	}
+	if got := mgr.lastEnv["SCION_HUB_URL"]; got != "https://hub.external.example.com" {
+		t.Errorf("expected SCION_HUB_URL='https://hub.external.example.com' from hub-native grove settings, got %q", got)
+	}
+}
+
+// TestResolveGroveSettingsDir tests the helper function that resolves the
+// settings directory for both linked and hub-native groves.
+func TestResolveGroveSettingsDir(t *testing.T) {
+	t.Run("linked grove - settings at grovePath directly", func(t *testing.T) {
+		// Linked grove: grovePath = /path/to/project/.scion, settings.yaml is there
+		groveDir := filepath.Join(t.TempDir(), ".scion")
+		if err := os.MkdirAll(groveDir, 0755); err != nil {
+			t.Fatalf("failed to create grove dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(groveDir, "settings.yaml"), []byte("hub:\n  endpoint: https://example.com\n"), 0644); err != nil {
+			t.Fatalf("failed to write settings.yaml: %v", err)
+		}
+
+		result := resolveGroveSettingsDir(groveDir)
+		if result != groveDir {
+			t.Errorf("expected %q, got %q", groveDir, result)
+		}
+	})
+
+	t.Run("hub-native grove - settings in .scion subdirectory", func(t *testing.T) {
+		// Hub-native grove: grovePath = ~/.scion/groves/<slug>, settings in .scion/
+		groveDir := t.TempDir()
+		scionDir := filepath.Join(groveDir, ".scion")
+		if err := os.MkdirAll(scionDir, 0755); err != nil {
+			t.Fatalf("failed to create .scion dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(scionDir, "settings.yaml"), []byte("hub:\n  endpoint: https://example.com\n"), 0644); err != nil {
+			t.Fatalf("failed to write settings.yaml: %v", err)
+		}
+
+		result := resolveGroveSettingsDir(groveDir)
+		if result != scionDir {
+			t.Errorf("expected %q (with .scion), got %q", scionDir, result)
+		}
+	})
+
+	t.Run("no settings file - returns original path", func(t *testing.T) {
+		groveDir := t.TempDir()
+		result := resolveGroveSettingsDir(groveDir)
+		if result != groveDir {
+			t.Errorf("expected %q (original path), got %q", groveDir, result)
+		}
+	})
+}
+
 // TestCreateAgentContainerHubEndpointOverride tests that ContainerHubEndpoint
 // overrides the dispatcher-provided endpoint for container injection.
 func TestCreateAgentContainerHubEndpointOverride(t *testing.T) {
@@ -1530,45 +1638,96 @@ func TestCreateAgentGroveSlugNotUsedWhenGrovePathSet(t *testing.T) {
 // handler uses the grove settings hub.endpoint rather than the broker's config
 // HubEndpoint (which defaults to localhost in combo mode).
 func TestStartAgentGroveSettingsOverridesHubEndpoint(t *testing.T) {
-	cfg := DefaultServerConfig()
-	cfg.BrokerID = "test-broker-id"
-	cfg.BrokerName = "test-host"
-	cfg.HubEndpoint = "http://localhost:9810" // broker's default (combo mode)
-	cfg.Debug = true
+	t.Run("linked grove with settings at grovePath", func(t *testing.T) {
+		cfg := DefaultServerConfig()
+		cfg.BrokerID = "test-broker-id"
+		cfg.BrokerName = "test-host"
+		cfg.HubEndpoint = "http://localhost:9810"
+		cfg.Debug = true
 
-	mgr := &provisionCapturingManager{}
-	rt := &runtime.MockRuntime{}
-	srv := New(cfg, mgr, rt)
+		mgr := &provisionCapturingManager{}
+		rt := &runtime.MockRuntime{}
+		srv := New(cfg, mgr, rt)
 
-	// Create a temp grove dir with settings.yaml containing the correct external endpoint
-	groveDir := t.TempDir()
-	settingsContent := "hub:\n  endpoint: https://hub.production.example.com\n"
-	if err := os.WriteFile(filepath.Join(groveDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
-		t.Fatalf("failed to write settings.yaml: %v", err)
-	}
+		// Linked grove: grovePath ends in .scion, settings.yaml is directly there
+		groveDir := filepath.Join(t.TempDir(), ".scion")
+		if err := os.MkdirAll(groveDir, 0755); err != nil {
+			t.Fatalf("failed to create grove dir: %v", err)
+		}
+		settingsContent := "hub:\n  endpoint: https://hub.production.example.com\n"
+		if err := os.WriteFile(filepath.Join(groveDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
+			t.Fatalf("failed to write settings.yaml: %v", err)
+		}
 
-	body := fmt.Sprintf(`{"grovePath": %q}`, groveDir)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/test-agent/start", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+		body := fmt.Sprintf(`{"grovePath": %q}`, groveDir)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/test-agent/start", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
 
-	srv.Handler().ServeHTTP(w, req)
+		srv.Handler().ServeHTTP(w, req)
 
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, w.Code, w.Body.String())
-	}
+		if w.Code != http.StatusAccepted {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, w.Code, w.Body.String())
+		}
 
-	if !mgr.startCalled {
-		t.Fatal("expected Start to be called")
-	}
+		if !mgr.startCalled {
+			t.Fatal("expected Start to be called")
+		}
 
-	// Grove settings hub.endpoint should override the broker's localhost endpoint
-	if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "https://hub.production.example.com" {
-		t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.production.example.com' from grove settings, got %q", got)
-	}
-	if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "https://hub.production.example.com" {
-		t.Errorf("expected SCION_HUB_URL='https://hub.production.example.com' from grove settings, got %q", got)
-	}
+		if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "https://hub.production.example.com" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.production.example.com' from grove settings, got %q", got)
+		}
+		if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "https://hub.production.example.com" {
+			t.Errorf("expected SCION_HUB_URL='https://hub.production.example.com' from grove settings, got %q", got)
+		}
+	})
+
+	t.Run("hub-native grove with settings in .scion subdirectory", func(t *testing.T) {
+		cfg := DefaultServerConfig()
+		cfg.BrokerID = "test-broker-id"
+		cfg.BrokerName = "test-host"
+		cfg.HubEndpoint = "http://localhost:9810"
+		cfg.Debug = true
+
+		mgr := &provisionCapturingManager{}
+		rt := &runtime.MockRuntime{}
+		srv := New(cfg, mgr, rt)
+
+		// Hub-native grove: grovePath is the workspace parent (~/.scion/groves/<slug>),
+		// settings.yaml lives in the .scion subdirectory
+		groveDir := t.TempDir()
+		scionDir := filepath.Join(groveDir, ".scion")
+		if err := os.MkdirAll(scionDir, 0755); err != nil {
+			t.Fatalf("failed to create .scion dir: %v", err)
+		}
+		settingsContent := "hub:\n  endpoint: https://hub.native.example.com\n"
+		if err := os.WriteFile(filepath.Join(scionDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
+			t.Fatalf("failed to write settings.yaml: %v", err)
+		}
+
+		body := fmt.Sprintf(`{"grovePath": %q}`, groveDir)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/test-agent/start", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.Handler().ServeHTTP(w, req)
+
+		if w.Code != http.StatusAccepted {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, w.Code, w.Body.String())
+		}
+
+		if !mgr.startCalled {
+			t.Fatal("expected Start to be called")
+		}
+
+		// resolveGroveSettingsDir should find settings in .scion subdirectory
+		if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "https://hub.native.example.com" {
+			t.Errorf("expected SCION_HUB_ENDPOINT='https://hub.native.example.com' from grove .scion settings, got %q", got)
+		}
+		if got := mgr.lastOpts.Env["SCION_HUB_URL"]; got != "https://hub.native.example.com" {
+			t.Errorf("expected SCION_HUB_URL='https://hub.native.example.com' from grove .scion settings, got %q", got)
+		}
+	})
 }
 
 // TestStartAgentBrokerConfigUsedWhenNoGroveSettings verifies that the broker's

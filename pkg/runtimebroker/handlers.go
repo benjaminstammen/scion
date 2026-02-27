@@ -257,6 +257,37 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// For hub-native groves (GroveSlug set, no local provider path), resolve
+	// the conventional grove path (~/.scion/groves/<slug>/) early so that
+	// hub endpoint resolution and env-gather can load settings correctly.
+	if req.GroveSlug != "" && req.GrovePath == "" {
+		globalDir, err := config.GetGlobalDir()
+		if err != nil {
+			RuntimeError(w, "Failed to get global dir: "+err.Error())
+			return
+		}
+		req.GrovePath = filepath.Join(globalDir, "groves", req.GroveSlug)
+		// Ensure the .scion project structure exists within the grove path.
+		// The Hub's initHubNativeGrove creates this on the Hub's filesystem,
+		// but on a different broker the directory may not exist yet. Without it,
+		// ResolveGrovePath won't find the .scion subdirectory and agents will
+		// be created at the wrong level (groves/<slug>/agents instead of
+		// groves/<slug>/.scion/agents).
+		scionDir := filepath.Join(req.GrovePath, ".scion")
+		if _, err := os.Stat(scionDir); os.IsNotExist(err) {
+			if err := config.InitProject(scionDir, nil); err != nil {
+				slog.Warn("Failed to initialize .scion project for hub-native grove",
+					"slug", req.GroveSlug, "path", scionDir, "error", err)
+			}
+		}
+		if s.config.Debug {
+			slog.Debug("Resolved hub-native grove path from slug",
+				"slug", req.GroveSlug,
+				"path", req.GrovePath,
+			)
+		}
+	}
+
 	// Build merged environment:
 	// 1. Start with resolvedEnv (from Hub, contains user/grove/broker vars and secrets)
 	// 2. Override with config.Env (explicitly set in request)
@@ -323,8 +354,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	// Hub's own server config may only know its localhost address.
 	// Use LoadSettingsFromDir to read only the grove's settings file without
 	// picking up the broker's environment variables or global settings.
+	// Use resolveGroveSettingsDir to handle both linked groves (path ends in
+	// .scion) and hub-native groves (settings are in .scion subdirectory).
 	if req.GrovePath != "" {
-		if groveSettings, err := config.LoadSettingsFromDir(req.GrovePath); err == nil {
+		settingsDir := resolveGroveSettingsDir(req.GrovePath)
+		if groveSettings, err := config.LoadSettingsFromDir(settingsDir); err == nil {
 			if !groveSettings.IsHubExplicitlyDisabled() {
 				if ep := groveSettings.GetHubEndpoint(); ep != "" {
 					hubEndpoint = ep
@@ -376,37 +410,6 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			} else {
 				slog.Debug("  ENV", "key", k, "value", v)
 			}
-		}
-	}
-
-	// For hub-native groves (GroveSlug set, no local provider path), resolve
-	// the conventional grove path (~/.scion/groves/<slug>/) early so that
-	// env-gather can load settings and determine required env keys.
-	if req.GroveSlug != "" && req.GrovePath == "" {
-		globalDir, err := config.GetGlobalDir()
-		if err != nil {
-			RuntimeError(w, "Failed to get global dir: "+err.Error())
-			return
-		}
-		req.GrovePath = filepath.Join(globalDir, "groves", req.GroveSlug)
-		// Ensure the .scion project structure exists within the grove path.
-		// The Hub's initHubNativeGrove creates this on the Hub's filesystem,
-		// but on a different broker the directory may not exist yet. Without it,
-		// ResolveGrovePath won't find the .scion subdirectory and agents will
-		// be created at the wrong level (groves/<slug>/agents instead of
-		// groves/<slug>/.scion/agents).
-		scionDir := filepath.Join(req.GrovePath, ".scion")
-		if _, err := os.Stat(scionDir); os.IsNotExist(err) {
-			if err := config.InitProject(scionDir, nil); err != nil {
-				slog.Warn("Failed to initialize .scion project for hub-native grove",
-					"slug", req.GroveSlug, "path", scionDir, "error", err)
-			}
-		}
-		if s.config.Debug {
-			slog.Debug("Resolved hub-native grove path from slug",
-				"slug", req.GroveSlug,
-				"path", req.GrovePath,
-			)
 		}
 	}
 
@@ -932,12 +935,15 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 	// reflects the externally-accessible Hub URL that agents inside
 	// containers need to reach the Hub. This takes precedence because the
 	// broker's own config may only know its localhost address.
+	// Use resolveGroveSettingsDir to handle both linked groves (path ends in
+	// .scion) and hub-native groves (settings are in .scion subdirectory).
 	grovePath := startReq.GrovePath
 	if grovePath == "" {
 		grovePath = opts.GrovePath
 	}
 	if grovePath != "" {
-		if groveSettings, err := config.LoadSettingsFromDir(grovePath); err == nil {
+		settingsDir := resolveGroveSettingsDir(grovePath)
+		if groveSettings, err := config.LoadSettingsFromDir(settingsDir); err == nil {
 			if !groveSettings.IsHubExplicitlyDisabled() {
 				if ep := groveSettings.GetHubEndpoint(); ep != "" {
 					hubEndpoint = ep
@@ -1601,6 +1607,21 @@ func (s *Server) resolveManagerForOpts(opts api.StartOptions) agent.Manager {
 }
 
 // Helper functions
+
+// resolveGroveSettingsDir returns the directory containing settings.yaml for a grove.
+// For linked groves, grovePath already points to the .scion directory.
+// For hub-native groves, grovePath is the workspace parent, so settings
+// live in the .scion subdirectory.
+func resolveGroveSettingsDir(grovePath string) string {
+	if config.GetSettingsPath(grovePath) != "" {
+		return grovePath
+	}
+	candidate := filepath.Join(grovePath, ".scion")
+	if config.GetSettingsPath(candidate) != "" {
+		return candidate
+	}
+	return grovePath // fallback to original
+}
 
 func boolPtr(b bool) *bool {
 	return &b
