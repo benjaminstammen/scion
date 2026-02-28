@@ -711,6 +711,28 @@ func (s *Server) SetEventPublisher(ep EventPublisher) {
 	s.events = ep
 }
 
+// StartNotificationDispatcher creates and starts the notification dispatcher
+// if a ChannelEventPublisher is available. It uses a lazy getter for the
+// AgentDispatcher so it works even if SetDispatcher is called later.
+// Safe to call multiple times; subsequent calls are no-ops.
+func (s *Server) StartNotificationDispatcher() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.notificationDispatcher != nil {
+		return // already started
+	}
+
+	ep, ok := s.events.(*ChannelEventPublisher)
+	if !ok {
+		slog.Warn("Event publisher does not support subscriptions, notification dispatcher not started")
+		return
+	}
+
+	s.notificationDispatcher = NewNotificationDispatcher(s.store, ep, s.GetDispatcher)
+	s.notificationDispatcher.Start()
+}
+
 // GetControlChannelManager returns the control channel manager.
 func (s *Server) GetControlChannelManager() *ControlChannelManager {
 	s.mu.RLock()
@@ -862,11 +884,10 @@ func (s *Server) Start(ctx context.Context) error {
 	// Start the purge loop for soft-deleted agents
 	s.startPurgeLoop(ctx)
 
-	// Start notification dispatcher if event publisher supports subscriptions
-	if ep, ok := s.events.(*ChannelEventPublisher); ok {
-		s.notificationDispatcher = NewNotificationDispatcher(s.store, ep, s.GetDispatcher())
-		s.notificationDispatcher.Start()
-	}
+	// Start notification dispatcher (uses the current event publisher).
+	// The dispatcher is resolved lazily so it works even if SetDispatcher
+	// is called after Start().
+	s.StartNotificationDispatcher()
 
 	slog.Info("Hub API server starting", "host", s.config.Host, "port", s.config.Port)
 

@@ -30,19 +30,22 @@ import (
 // notification subscriptions, stores notification records, and dispatches
 // messages to subscriber agents.
 type NotificationDispatcher struct {
-	store      store.Store
-	events     *ChannelEventPublisher
-	dispatcher AgentDispatcher
-	stopCh     chan struct{}
+	store         store.Store
+	events        *ChannelEventPublisher
+	getDispatcher func() AgentDispatcher // lazy getter; dispatcher may be set after startup
+	stopCh        chan struct{}
 }
 
 // NewNotificationDispatcher creates a new NotificationDispatcher.
-func NewNotificationDispatcher(s store.Store, events *ChannelEventPublisher, dispatcher AgentDispatcher) *NotificationDispatcher {
+// The getDispatcher function is called at dispatch time to resolve the current
+// AgentDispatcher, allowing the dispatcher to be set up after the notification
+// system starts (e.g. in combined hub+web mode).
+func NewNotificationDispatcher(s store.Store, events *ChannelEventPublisher, getDispatcher func() AgentDispatcher) *NotificationDispatcher {
 	return &NotificationDispatcher{
-		store:      s,
-		events:     events,
-		dispatcher: dispatcher,
-		stopCh:     make(chan struct{}),
+		store:         s,
+		events:        events,
+		getDispatcher: getDispatcher,
+		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -164,7 +167,8 @@ func (nd *NotificationDispatcher) dispatchToAgent(ctx context.Context, sub *stor
 		return
 	}
 
-	if nd.dispatcher == nil {
+	dispatcher := nd.getDispatcher()
+	if dispatcher == nil {
 		slog.Warn("No dispatcher available, skipping notification dispatch",
 			"subscriberID", sub.SubscriberID)
 		// Mark dispatched anyway (best-effort)
@@ -183,7 +187,7 @@ func (nd *NotificationDispatcher) dispatchToAgent(ctx context.Context, sub *stor
 		return
 	}
 
-	if err := nd.dispatcher.DispatchAgentMessage(ctx, subscriber, notif.Message, false); err != nil {
+	if err := dispatcher.DispatchAgentMessage(ctx, subscriber, notif.Message, false); err != nil {
 		slog.Error("Failed to dispatch notification to agent",
 			"subscriberID", sub.SubscriberID, "error", err)
 	}

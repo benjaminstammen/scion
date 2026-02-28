@@ -89,7 +89,7 @@ func setupIntegrationTest(t *testing.T) *integrationTestEnv {
 	require.NoError(t, s.UpdateGrove(ctx, grove))
 
 	// Create and start the notification dispatcher
-	nd := NewNotificationDispatcher(s, pub, recorder)
+	nd := NewNotificationDispatcher(s, pub, func() AgentDispatcher { return recorder })
 	nd.Start()
 	t.Cleanup(func() { nd.Stop() })
 

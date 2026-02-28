@@ -166,7 +166,7 @@ func setupNotificationTest(t *testing.T) *notificationTestEnv {
 	}
 	require.NoError(t, s.CreateNotificationSubscription(ctx, sub))
 
-	nd := NewNotificationDispatcher(s, pub, dispatcher)
+	nd := NewNotificationDispatcher(s, pub, func() AgentDispatcher { return dispatcher })
 
 	return &notificationTestEnv{
 		store:      s,
@@ -409,7 +409,8 @@ func TestNotificationDispatcher_Stop(t *testing.T) {
 
 func TestNotificationDispatcher_NilDispatcher(t *testing.T) {
 	env := setupNotificationTest(t)
-	env.nd.dispatcher = nil
+	// Replace with a nil-returning getter to simulate no dispatcher available
+	env.nd.getDispatcher = func() AgentDispatcher { return nil }
 
 	env.nd.Start()
 	defer env.nd.Stop()

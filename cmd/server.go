@@ -993,6 +993,11 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		dispatcher := hubSrv.CreateAuthenticatedDispatcher()
 		hubSrv.SetDispatcher(dispatcher)
 		log.Printf("Agent dispatcher configured (HTTP-based)")
+
+		// Ensure notification dispatcher is started. In standalone hub mode,
+		// Start() already started it (this is a no-op). In combined web+hub
+		// mode, Start() is never called so this is the primary startup path.
+		hubSrv.StartNotificationDispatcher()
 	}
 
 	// Start internal heartbeat loop for co-located operation.
