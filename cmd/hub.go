@@ -364,7 +364,22 @@ func getAuthInfo(settings *config.Settings, endpoint string) authInfo {
 		}
 	}
 
-	// Check for agent-mode token
+	// Check for agent auth token (SCION_AUTH_TOKEN - used in hub-dispatched containers)
+	if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
+		if apiclient.IsDevToken(token) {
+			info.Method = "Agent token (dev)"
+			info.MethodType = "agent_token"
+			info.Source = "SCION_AUTH_TOKEN env"
+			info.IsDevAuth = true
+		} else {
+			info.Method = "Agent token"
+			info.MethodType = "agent_token"
+			info.Source = "SCION_AUTH_TOKEN env"
+		}
+		return info
+	}
+
+	// Check for legacy agent-mode token
 	if token := os.Getenv("SCION_HUB_TOKEN"); token != "" {
 		info.Method = "Bearer token"
 		info.MethodType = "bearer"
@@ -398,7 +413,7 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 
 	// Add authentication - check in priority order.
 	// Note: hub.token and hub.apiKey are deprecated and no longer used for auth.
-	// Auth priority: OAuth credentials > SCION_HUB_TOKEN env > auto dev auth.
+	// Auth priority: OAuth credentials > SCION_AUTH_TOKEN env > SCION_HUB_TOKEN env > auto dev auth.
 	authConfigured := false
 
 	// Check for OAuth credentials from scion hub auth login
@@ -407,7 +422,15 @@ func getHubClient(settings *config.Settings) (hubclient.Client, error) {
 		authConfigured = true
 	}
 
-	// Check for agent-mode token (running inside a container)
+	// Check for agent auth token (running inside a hub-dispatched container)
+	if !authConfigured {
+		if token := os.Getenv("SCION_AUTH_TOKEN"); token != "" {
+			opts = append(opts, hubclient.WithAgentToken(token))
+			authConfigured = true
+		}
+	}
+
+	// Check for legacy agent-mode token (running inside a container)
 	if !authConfigured {
 		if token := os.Getenv("SCION_HUB_TOKEN"); token != "" {
 			opts = append(opts, hubclient.WithBearerToken(token))

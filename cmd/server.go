@@ -485,10 +485,10 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		// Set dev token env vars in the server's own environment so that:
 		// - SCION_DEV_TOKEN: co-located broker components using WithAutoDevAuth()
 		//   automatically pick up the token for hub client authentication.
-		// - SCION_SERVER_AUTH_DEV_TOKEN: the broker handler can pass this to
+		// - SCION_AUTH_TOKEN: the broker handler can pass this to
 		//   agent containers as a fallback when no JWT agent token is provided.
 		os.Setenv("SCION_DEV_TOKEN", devAuthToken)
-		os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", devAuthToken)
+		os.Setenv("SCION_AUTH_TOKEN", devAuthToken)
 
 		log.Println("WARNING: Development authentication enabled - not for production use")
 		log.Printf("Dev token: %s", devAuthToken)

@@ -117,12 +117,12 @@ func TestHubHandler_EventMapping(t *testing.T) {
 
 			// Set environment variables for the Hub client
 			os.Setenv("SCION_HUB_ENDPOINT", server.URL)
-			os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "test-token")
+			os.Setenv("SCION_AUTH_TOKEN", "test-token")
 			os.Setenv("SCION_AGENT_ID", "test-agent-id")
 			defer func() {
 				os.Unsetenv("SCION_HUB_ENDPOINT")
 				os.Unsetenv("SCION_HUB_URL")
-				os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
+				os.Unsetenv("SCION_AUTH_TOKEN")
 				os.Unsetenv("SCION_AGENT_ID")
 			}()
 
@@ -169,7 +169,7 @@ func TestHubHandler_NotConfigured(t *testing.T) {
 	// Clear environment to ensure client is not configured
 	os.Unsetenv("SCION_HUB_ENDPOINT")
 	os.Unsetenv("SCION_HUB_URL")
-	os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
+	os.Unsetenv("SCION_AUTH_TOKEN")
 	os.Unsetenv("SCION_AGENT_ID")
 
 	handler := NewHubHandler()
@@ -201,12 +201,12 @@ func TestHubHandler_ReportMethods(t *testing.T) {
 	defer server.Close()
 
 	os.Setenv("SCION_HUB_ENDPOINT", server.URL)
-	os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "test-token")
+	os.Setenv("SCION_AUTH_TOKEN", "test-token")
 	os.Setenv("SCION_AGENT_ID", "test-agent-id")
 	defer func() {
 		os.Unsetenv("SCION_HUB_ENDPOINT")
 		os.Unsetenv("SCION_HUB_URL")
-		os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
+		os.Unsetenv("SCION_AUTH_TOKEN")
 		os.Unsetenv("SCION_AGENT_ID")
 	}()
 
@@ -389,12 +389,12 @@ func TestHubHandler_StickyStatus(t *testing.T) {
 			defer server.Close()
 
 			os.Setenv("SCION_HUB_ENDPOINT", server.URL)
-			os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "test-token")
+			os.Setenv("SCION_AUTH_TOKEN", "test-token")
 			os.Setenv("SCION_AGENT_ID", "test-agent-id")
 			defer func() {
 				os.Unsetenv("SCION_HUB_ENDPOINT")
 				os.Unsetenv("SCION_HUB_URL")
-				os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
+				os.Unsetenv("SCION_AUTH_TOKEN")
 				os.Unsetenv("SCION_AGENT_ID")
 			}()
 

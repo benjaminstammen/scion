@@ -312,18 +312,17 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add Hub authentication credentials for the agent.
-	// Uses SCION_SERVER_AUTH_DEV_TOKEN which maps to the non-deprecated
-	// server.auth.dev_token setting.
-	// Priority: explicit agent token from dispatcher > broker's own dev token.
+	// Uses SCION_AUTH_TOKEN as the generic agent-to-hub auth token.
+	// Priority: explicit agent token from dispatcher > broker's own auth token.
 	if agentToken := req.AgentToken; agentToken != "" {
-		env["SCION_SERVER_AUTH_DEV_TOKEN"] = agentToken
+		env["SCION_AUTH_TOKEN"] = agentToken
 		if s.config.Debug {
-			slog.Debug("SCION_SERVER_AUTH_DEV_TOKEN set from agent token", "length", len(agentToken))
+			slog.Debug("SCION_AUTH_TOKEN set from agent token", "length", len(agentToken))
 		}
-	} else if devToken := os.Getenv("SCION_SERVER_AUTH_DEV_TOKEN"); devToken != "" {
-		env["SCION_SERVER_AUTH_DEV_TOKEN"] = devToken
+	} else if devToken := os.Getenv("SCION_AUTH_TOKEN"); devToken != "" {
+		env["SCION_AUTH_TOKEN"] = devToken
 		if s.config.Debug {
-			slog.Debug("SCION_SERVER_AUTH_DEV_TOKEN set from broker env", "length", len(devToken))
+			slog.Debug("SCION_AUTH_TOKEN set from broker env", "length", len(devToken))
 		}
 	}
 	// Set Hub URL with priority:
@@ -408,7 +407,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	if s.config.Debug {
 		slog.Debug("Final environment count", "count", len(env))
 		for k, v := range env {
-			if k == "SCION_SERVER_AUTH_DEV_TOKEN" {
+			if k == "SCION_AUTH_TOKEN" {
 				slog.Debug("  ENV", "key", k, "value", "<redacted>")
 			} else {
 				slog.Debug("  ENV", "key", k, "value", v)

@@ -318,7 +318,7 @@ func newTestServerWithEnvCapture() (*Server, *envCapturingManager) {
 }
 
 // TestCreateAgentWithHubCredentials tests that Hub authentication env vars are passed to agent.
-// This verifies the fix from progress-report.md: RuntimeBroker sets SCION_HUB_URL, SCION_SERVER_AUTH_DEV_TOKEN, SCION_AGENT_ID.
+// This verifies the fix from progress-report.md: RuntimeBroker sets SCION_HUB_URL, SCION_AUTH_TOKEN, SCION_AGENT_ID.
 func TestCreateAgentWithHubCredentials(t *testing.T) {
 	srv, mgr := newTestServerWithEnvCapture()
 
@@ -354,9 +354,9 @@ func TestCreateAgentWithHubCredentials(t *testing.T) {
 		t.Errorf("expected SCION_HUB_URL='https://hub.example.com' (legacy compat), got %q", got)
 	}
 
-	// Check SCION_SERVER_AUTH_DEV_TOKEN
-	if got := mgr.lastEnv["SCION_SERVER_AUTH_DEV_TOKEN"]; got != "secret-token-xyz" {
-		t.Errorf("expected SCION_SERVER_AUTH_DEV_TOKEN='secret-token-xyz', got %q", got)
+	// Check SCION_AUTH_TOKEN
+	if got := mgr.lastEnv["SCION_AUTH_TOKEN"]; got != "secret-token-xyz" {
+		t.Errorf("expected SCION_AUTH_TOKEN='secret-token-xyz', got %q", got)
 	}
 
 	// Check SCION_AGENT_ID
@@ -468,7 +468,7 @@ func TestCreateAgentWithResolvedEnv(t *testing.T) {
 // TestCreateAgentWithoutHubCredentials tests agent creation without Hub integration.
 func TestCreateAgentWithoutHubCredentials(t *testing.T) {
 	// Clear dev token env var to prevent broker from forwarding it to agents
-	t.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "")
+	t.Setenv("SCION_AUTH_TOKEN", "")
 
 	srv, mgr := newTestServerWithEnvCapture()
 
@@ -497,8 +497,8 @@ func TestCreateAgentWithoutHubCredentials(t *testing.T) {
 		t.Error("expected SCION_HUB_URL to not be set when no hubEndpoint provided")
 	}
 
-	if _, exists := mgr.lastEnv["SCION_SERVER_AUTH_DEV_TOKEN"]; exists {
-		t.Error("expected SCION_SERVER_AUTH_DEV_TOKEN to not be set when no agentToken provided")
+	if _, exists := mgr.lastEnv["SCION_AUTH_TOKEN"]; exists {
+		t.Error("expected SCION_AUTH_TOKEN to not be set when no agentToken provided")
 	}
 
 	if _, exists := mgr.lastEnv["SCION_AGENT_ID"]; exists {

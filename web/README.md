@@ -59,7 +59,7 @@ The `--web-assets-dir` flag tells the server to load assets from disk instead of
 
 The `--dev-auth` flag:
 - Generates a dev token and prints it to the console
-- Sets `SCION_DEV_TOKEN` and `SCION_SERVER_AUTH_DEV_TOKEN` environment variables for the process
+- Sets `SCION_DEV_TOKEN` and `SCION_AUTH_TOKEN` environment variables for the process
 - Auto-populates a session for browser requests so no login flow is needed
 
 ### Development with Vite HMR

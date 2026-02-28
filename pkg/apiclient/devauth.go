@@ -110,9 +110,8 @@ func ValidateDevToken(provided, expected string) bool {
 // ResolveDevToken finds a development token from environment or file.
 // It checks in order:
 // 1. SCION_DEV_TOKEN environment variable
-// 2. SCION_SERVER_AUTH_DEV_TOKEN environment variable (v1 settings env var)
-// 3. SCION_DEV_TOKEN_FILE environment variable (path to token file)
-// 4. Default token file (~/.scion/dev-token)
+// 2. SCION_DEV_TOKEN_FILE environment variable (path to token file)
+// 3. Default token file (~/.scion/dev-token)
 func ResolveDevToken() string {
 	token, _ := ResolveDevTokenWithSource()
 	return token
@@ -122,18 +121,12 @@ func ResolveDevToken() string {
 // the token and the source it was loaded from.
 // It checks in order:
 // 1. SCION_DEV_TOKEN environment variable
-// 2. SCION_SERVER_AUTH_DEV_TOKEN environment variable (v1 settings env var)
-// 3. SCION_DEV_TOKEN_FILE environment variable (path to token file)
-// 4. Default token file (~/.scion/dev-token)
+// 2. SCION_DEV_TOKEN_FILE environment variable (path to token file)
+// 3. Default token file (~/.scion/dev-token)
 func ResolveDevTokenWithSource() (string, string) {
 	// Priority 1: Environment variable
 	if token := os.Getenv("SCION_DEV_TOKEN"); token != "" {
 		return token, "SCION_DEV_TOKEN env var"
-	}
-
-	// Priority 1b: V1 settings env var (maps to server.auth.dev_token)
-	if token := os.Getenv("SCION_SERVER_AUTH_DEV_TOKEN"); token != "" {
-		return token, "SCION_SERVER_AUTH_DEV_TOKEN env var"
 	}
 
 	// Priority 2: Custom token file from env

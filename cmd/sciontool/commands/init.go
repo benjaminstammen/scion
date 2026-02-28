@@ -298,8 +298,8 @@ func runInit(args []string) int {
 		// Report running status to Hub if in hosted mode
 		hubClient := hub.NewClient()
 		log.Debug("Hub client check: client=%v, configured=%v", hubClient != nil, hubClient != nil && hubClient.IsConfigured())
-		log.Debug("Hub env: SCION_HUB_ENDPOINT=%q, SCION_HUB_URL=%q, SCION_HUB_TOKEN=%v, SCION_AGENT_ID=%q",
-			os.Getenv("SCION_HUB_ENDPOINT"), os.Getenv("SCION_HUB_URL"), os.Getenv("SCION_HUB_TOKEN") != "", os.Getenv("SCION_AGENT_ID"))
+		log.Debug("Hub env: SCION_HUB_ENDPOINT=%q, SCION_HUB_URL=%q, SCION_AUTH_TOKEN=%v, SCION_AGENT_ID=%q",
+			os.Getenv("SCION_HUB_ENDPOINT"), os.Getenv("SCION_HUB_URL"), os.Getenv("SCION_AUTH_TOKEN") != "", os.Getenv("SCION_AGENT_ID"))
 		if hubClient != nil && hubClient.IsConfigured() {
 			hubCtx, hubCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			if err := hubClient.ReportRunning(hubCtx, "Agent started"); err != nil {

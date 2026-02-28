@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Package hub provides a client for sciontool to communicate with the Scion Hub.
-// It uses the SCION_SERVER_AUTH_DEV_TOKEN environment variable for authentication.
+// It uses the SCION_AUTH_TOKEN environment variable for authentication.
 package hub
 
 import (
@@ -34,8 +34,8 @@ const (
 	// EnvHubURL is the legacy environment variable for the Hub URL.
 	EnvHubURL = "SCION_HUB_URL"
 	// EnvHubToken is the environment variable for Hub authentication.
-	// Maps to the non-deprecated server.auth.dev_token setting.
-	EnvHubToken = "SCION_SERVER_AUTH_DEV_TOKEN"
+	// Generic agent-to-hub auth token (JWT or dev token).
+	EnvHubToken = "SCION_AUTH_TOKEN"
 	// EnvAgentID is the environment variable for the agent ID.
 	EnvAgentID = "SCION_AGENT_ID"
 	// EnvAgentMode is the environment variable for the agent mode.

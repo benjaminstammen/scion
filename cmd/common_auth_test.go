@@ -83,7 +83,7 @@ func TestGetHubAccessToken_DevTokenFileFallback(t *testing.T) {
 
 	// Clear env-based dev token (including v1 settings env var)
 	t.Setenv("SCION_DEV_TOKEN", "")
-	t.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "")
+	t.Setenv("SCION_AUTH_TOKEN", "")
 
 	// Set up a dev token file
 	tokenFile := filepath.Join(tmpDir, "dev-token")
@@ -135,7 +135,7 @@ func TestGetHubAccessToken_NoAuth(t *testing.T) {
 
 	// Clear all dev token sources (including v1 settings env var)
 	t.Setenv("SCION_DEV_TOKEN", "")
-	t.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "")
+	t.Setenv("SCION_AUTH_TOKEN", "")
 	t.Setenv("SCION_DEV_TOKEN_FILE", "")
 	// Override HOME to prevent finding ~/.scion/dev-token
 	t.Setenv("HOME", tmpDir)

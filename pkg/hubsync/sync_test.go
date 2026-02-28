@@ -795,8 +795,8 @@ func TestCreateHubClient_UsesAgentTokenFromEnv(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Set SCION_SERVER_AUTH_DEV_TOKEN env var
-	t.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "test-agent-jwt")
+	// Set SCION_AUTH_TOKEN env var
+	t.Setenv("SCION_AUTH_TOKEN", "test-agent-jwt")
 	// Clear any dev auth token so it doesn't interfere
 	t.Setenv("SCION_DEV_TOKEN", "")
 
@@ -814,9 +814,9 @@ func TestCreateHubClient_UsesAgentTokenFromEnv(t *testing.T) {
 }
 
 func TestCreateHubClient_PrefersOAuthOverAgentToken(t *testing.T) {
-	// When OAuth credentials exist, they should take precedence over SCION_SERVER_AUTH_DEV_TOKEN.
+	// When OAuth credentials exist, they should take precedence over SCION_AUTH_TOKEN.
 	// We can't easily test this because credentials.GetAccessToken uses a global store,
-	// but we can verify that without OAuth, SCION_SERVER_AUTH_DEV_TOKEN is picked up.
+	// but we can verify that without OAuth, SCION_AUTH_TOKEN is picked up.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Just verify the request arrives
 		w.Header().Set("Content-Type", "application/json")
@@ -824,8 +824,8 @@ func TestCreateHubClient_PrefersOAuthOverAgentToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// With SCION_SERVER_AUTH_DEV_TOKEN set but no OAuth, agent token should be used
-	t.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "agent-jwt")
+	// With SCION_AUTH_TOKEN set but no OAuth, agent token should be used
+	t.Setenv("SCION_AUTH_TOKEN", "agent-jwt")
 	t.Setenv("SCION_DEV_TOKEN", "")
 
 	settings := &config.Settings{}
@@ -836,7 +836,7 @@ func TestCreateHubClient_PrefersOAuthOverAgentToken(t *testing.T) {
 }
 
 func TestCreateHubClient_FallsBackToDevAuth(t *testing.T) {
-	// When neither OAuth nor SCION_SERVER_AUTH_DEV_TOKEN is set, should fall back to dev auth
+	// When neither OAuth nor SCION_AUTH_TOKEN is set, should fall back to dev auth
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -844,7 +844,7 @@ func TestCreateHubClient_FallsBackToDevAuth(t *testing.T) {
 	defer server.Close()
 
 	// Clear both tokens
-	t.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "")
+	t.Setenv("SCION_AUTH_TOKEN", "")
 	t.Setenv("SCION_DEV_TOKEN", "dev-token-123")
 
 	settings := &config.Settings{}

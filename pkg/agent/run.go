@@ -340,9 +340,9 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	// If hub endpoint is now set but no auth token, resolve dev auth token
 	// from the host filesystem (env vars or ~/.scion/dev-token file).
 	if _, ok := opts.Env["SCION_HUB_ENDPOINT"]; ok {
-		if _, tokenSet := opts.Env["SCION_SERVER_AUTH_DEV_TOKEN"]; !tokenSet {
+		if _, tokenSet := opts.Env["SCION_AUTH_TOKEN"]; !tokenSet {
 			if token := apiclient.ResolveDevToken(); token != "" {
-				opts.Env["SCION_SERVER_AUTH_DEV_TOKEN"] = token
+				opts.Env["SCION_AUTH_TOKEN"] = token
 			}
 		}
 	}

@@ -229,34 +229,8 @@ func TestResolveDevToken(t *testing.T) {
 		os.Unsetenv("SCION_DEV_TOKEN")
 	})
 
-	t.Run("from server auth env var", func(t *testing.T) {
-		os.Unsetenv("SCION_DEV_TOKEN")
-		os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "scion_dev_from_server_auth")
-
-		token := ResolveDevToken()
-		if token != "scion_dev_from_server_auth" {
-			t.Errorf("ResolveDevToken() = %v, want scion_dev_from_server_auth", token)
-		}
-
-		os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
-	})
-
-	t.Run("SCION_DEV_TOKEN takes priority over SCION_SERVER_AUTH_DEV_TOKEN", func(t *testing.T) {
-		os.Setenv("SCION_DEV_TOKEN", "scion_dev_primary")
-		os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "scion_dev_secondary")
-
-		token := ResolveDevToken()
-		if token != "scion_dev_primary" {
-			t.Errorf("ResolveDevToken() = %v, want scion_dev_primary", token)
-		}
-
-		os.Unsetenv("SCION_DEV_TOKEN")
-		os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
-	})
-
 	t.Run("from custom file via env", func(t *testing.T) {
 		os.Unsetenv("SCION_DEV_TOKEN")
-		os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
 
 		customFile := filepath.Join(tmpDir, "custom-resolve")
 		if err := os.WriteFile(customFile, []byte("scion_dev_from_file\n"), 0600); err != nil {
@@ -316,24 +290,8 @@ func TestResolveDevTokenWithSource(t *testing.T) {
 		os.Unsetenv("SCION_DEV_TOKEN")
 	})
 
-	t.Run("from server auth env var with source", func(t *testing.T) {
-		os.Unsetenv("SCION_DEV_TOKEN")
-		os.Setenv("SCION_SERVER_AUTH_DEV_TOKEN", "scion_dev_server_auth")
-
-		token, source := ResolveDevTokenWithSource()
-		if token != "scion_dev_server_auth" {
-			t.Errorf("ResolveDevTokenWithSource() token = %v, want scion_dev_server_auth", token)
-		}
-		if source != "SCION_SERVER_AUTH_DEV_TOKEN env var" {
-			t.Errorf("ResolveDevTokenWithSource() source = %v, want 'SCION_SERVER_AUTH_DEV_TOKEN env var'", source)
-		}
-
-		os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
-	})
-
 	t.Run("from custom file via env with source", func(t *testing.T) {
 		os.Unsetenv("SCION_DEV_TOKEN")
-		os.Unsetenv("SCION_SERVER_AUTH_DEV_TOKEN")
 
 		customFile := filepath.Join(tmpDir, "custom-resolve-source")
 		if err := os.WriteFile(customFile, []byte("scion_dev_from_file\n"), 0600); err != nil {

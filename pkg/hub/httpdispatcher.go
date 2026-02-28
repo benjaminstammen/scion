@@ -1022,7 +1022,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 				slog.Warn("DispatchAgentStart: failed to generate agent token", "error", err)
 			}
 		} else if token != "" {
-			resolvedEnv["SCION_SERVER_AUTH_DEV_TOKEN"] = token
+			resolvedEnv["SCION_AUTH_TOKEN"] = token
 		}
 	}
 
