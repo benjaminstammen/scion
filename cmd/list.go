@@ -188,9 +188,9 @@ func enrichAgentsClientSide(ctx context.Context, client hubclient.Client, agents
 
 // hubAgentToAgentInfo converts a Hub API Agent to a local AgentInfo
 func hubAgentToAgentInfo(a hubclient.Agent) api.AgentInfo {
-	// Map hubclient.Agent.Status to Phase/Activity for api.AgentInfo.
-	// The Hub API returns a single Status field; we derive Phase and Activity from it.
-	phase, activity := hubStatusToPhaseActivity(a.Status)
+	// Map to Phase/Activity for api.AgentInfo.
+	// Prefer structured Phase/Activity fields; fall back to legacy Status field.
+	phase, activity := hubAgentPhaseActivity(a.Phase, a.Activity, a.Status)
 
 	info := api.AgentInfo{
 		ID:                a.ID,
@@ -471,6 +471,16 @@ func containsStr(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// hubAgentPhaseActivity returns the phase and activity for a Hub agent,
+// preferring the structured Phase/Activity fields from the API response
+// and falling back to deriving them from the legacy Status field.
+func hubAgentPhaseActivity(phase, activity, status string) (string, string) {
+	if phase != "" {
+		return phase, activity
+	}
+	return hubStatusToPhaseActivity(status)
 }
 
 // hubStatusToPhaseActivity maps a hubclient Status string to Phase and Activity.

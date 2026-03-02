@@ -128,8 +128,7 @@ func attachViaHub(hubCtx *HubContext, agentName string) error {
 	}
 
 	// Check agent lifecycle status - the agent must be running to attach.
-	// Map the Hub Status field to phase/activity for the check.
-	agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+	agentPhase, _ := hubAgentPhaseActivity(agent.Phase, agent.Activity, agent.Status)
 	if agentPhase != string(state.PhaseRunning) {
 		// Build a helpful error message with available status info
 		statusInfo := agent.Status

@@ -655,7 +655,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 				if err != nil {
 					continue
 				}
-				agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+				agentPhase, _ := hubAgentPhaseActivity(agent.Phase, agent.Activity, agent.Status)
 				if agentPhase == string(state.PhaseRunning) {
 					statusf("Agent '%s' started via Hub.\n", agentName)
 					if !attach {
@@ -696,7 +696,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		}
 		if resp.Agent != nil {
 			result.Details["slug"] = resp.Agent.Slug
-			phase, activity := hubStatusToPhaseActivity(resp.Agent.Status)
+			phase, activity := hubAgentPhaseActivity(resp.Agent.Phase, resp.Agent.Activity, resp.Agent.Status)
 			result.Details["phase"] = phase
 			if activity != "" {
 				result.Details["activity"] = activity
@@ -711,7 +711,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 	statusf("Agent '%s' %s via Hub.\n", agentName, displayStatus)
 	if resp.Agent != nil {
 		statusf("Agent Slug: %s\n", resp.Agent.Slug)
-		phase, _ := hubStatusToPhaseActivity(resp.Agent.Status)
+		phase, _ := hubAgentPhaseActivity(resp.Agent.Phase, resp.Agent.Activity, resp.Agent.Status)
 		statusf("Phase: %s\n", phase)
 	}
 	for _, w := range resp.Warnings {
@@ -748,7 +748,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 			if err != nil {
 				continue // Retry on transient errors
 			}
-			agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+			agentPhase, _ := hubAgentPhaseActivity(agent.Phase, agent.Activity, agent.Status)
 			if agentPhase == string(state.PhaseRunning) {
 				// Use the agent's ID from the latest fetch
 				if agent.ID != "" {

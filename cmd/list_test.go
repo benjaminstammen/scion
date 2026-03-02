@@ -391,6 +391,70 @@ func TestDisplayAgentsFriendlyTemplateName(t *testing.T) {
 	}
 }
 
+func TestHubAgentPhaseActivity_PrefersPhaseField(t *testing.T) {
+	// When Phase is set, it should be used directly regardless of Status
+	phase, activity := hubAgentPhaseActivity("running", "thinking", "")
+	if phase != "running" {
+		t.Errorf("phase = %q, want %q", phase, "running")
+	}
+	if activity != "thinking" {
+		t.Errorf("activity = %q, want %q", activity, "thinking")
+	}
+}
+
+func TestHubAgentPhaseActivity_FallsBackToStatus(t *testing.T) {
+	// When Phase is empty, fall back to deriving from Status
+	phase, activity := hubAgentPhaseActivity("", "", "waiting_for_input")
+	if phase != "running" {
+		t.Errorf("phase = %q, want %q (derived from status activity)", phase, "running")
+	}
+	if activity != "waiting_for_input" {
+		t.Errorf("activity = %q, want %q", activity, "waiting_for_input")
+	}
+}
+
+func TestHubAgentPhaseActivity_EmptyAll(t *testing.T) {
+	// When all fields are empty, returns empty
+	phase, activity := hubAgentPhaseActivity("", "", "")
+	if phase != "" {
+		t.Errorf("phase = %q, want empty", phase)
+	}
+	if activity != "" {
+		t.Errorf("activity = %q, want empty", activity)
+	}
+}
+
+func TestHubAgentToAgentInfo_PhaseFromPhaseField(t *testing.T) {
+	// When the Hub returns phase and activity fields directly, use them
+	a := hubclient.Agent{
+		ID:              "agent-phase",
+		Name:            "test-agent",
+		Phase:           "running",
+		Activity:        "thinking",
+		ContainerStatus: "running",
+	}
+	info := hubAgentToAgentInfo(a)
+	if info.Phase != "running" {
+		t.Errorf("Phase = %q, want %q", info.Phase, "running")
+	}
+	if info.Activity != "thinking" {
+		t.Errorf("Activity = %q, want %q", info.Activity, "thinking")
+	}
+}
+
+func TestHubAgentToAgentInfo_PhaseFromStatusFallback(t *testing.T) {
+	// When Phase is empty but Status has a value, derive from it
+	a := hubclient.Agent{
+		ID:     "agent-legacy",
+		Name:   "test-agent",
+		Status: "running",
+	}
+	info := hubAgentToAgentInfo(a)
+	if info.Phase != "running" {
+		t.Errorf("Phase = %q, want %q (derived from Status)", info.Phase, "running")
+	}
+}
+
 func TestHubAgentToAgentInfo_HarnessConfigFromTopLevel(t *testing.T) {
 	// When the Hub returns harnessConfig at the top level, use it directly
 	a := hubclient.Agent{

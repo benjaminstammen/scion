@@ -187,7 +187,7 @@ func createAgentViaHub(hubCtx *HubContext, agentName string, task string) error 
 		}
 		if resp.Agent != nil {
 			result.Details["slug"] = resp.Agent.Slug
-			phase, activity := hubStatusToPhaseActivity(resp.Agent.Status)
+			phase, activity := hubAgentPhaseActivity(resp.Agent.Phase, resp.Agent.Activity, resp.Agent.Status)
 			result.Details["phase"] = phase
 			if activity != "" {
 				result.Details["activity"] = activity
@@ -211,7 +211,7 @@ func createAgentViaHub(hubCtx *HubContext, agentName string, task string) error 
 		}
 		statusf("Agent '%s' created via Hub%s.\n", agentName, brokerInfo)
 		statusf("Agent Slug: %s\n", resp.Agent.Slug)
-		phase, _ := hubStatusToPhaseActivity(resp.Agent.Status)
+		phase, _ := hubAgentPhaseActivity(resp.Agent.Phase, resp.Agent.Activity, resp.Agent.Status)
 		statusf("Phase: %s\n", phase)
 
 		// For local broker, print the agent directory path so the user can inspect/tweak files

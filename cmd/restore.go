@@ -51,7 +51,7 @@ var restoreCmd = &cobra.Command{
 			return wrapHubError(fmt.Errorf("failed to restore agent: %w", err))
 		}
 
-		phase, _ := hubStatusToPhaseActivity(agent.Status)
+		phase, _ := hubAgentPhaseActivity(agent.Phase, agent.Activity, agent.Status)
 		statusf("Agent '%s' restored (phase: %s).\n", agent.Name, phase)
 		return nil
 	},

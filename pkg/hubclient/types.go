@@ -28,7 +28,9 @@ type Agent struct {
 	Grove           string            `json:"grove,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`
 	Annotations     map[string]string `json:"annotations,omitempty"`
-	Status          string            `json:"status"`
+	Phase           string            `json:"phase,omitempty"`           // Lifecycle phase (created, provisioning, running, stopped, error)
+	Activity        string            `json:"activity,omitempty"`        // Runtime activity (idle, thinking, executing, waiting_for_input, completed)
+	Status          string            `json:"status"`                    // Legacy/fallback status field
 	ConnectionState string            `json:"connectionState,omitempty"`
 	ContainerStatus string            `json:"containerStatus,omitempty"`
 	RuntimeState    string            `json:"runtimeState,omitempty"`

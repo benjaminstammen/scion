@@ -389,7 +389,7 @@ func resolveAgentID(ctx context.Context, client hubclient.Client, groveID, agent
 	for _, agent := range resp.Agents {
 		if agent.Name == agentName {
 			// Check agent phase — must be running to sync
-			agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+			agentPhase, _ := hubAgentPhaseActivity(agent.Phase, agent.Activity, agent.Status)
 			if agentPhase != string(state.PhaseRunning) {
 				return "", fmt.Errorf("agent '%s' is not running (phase: %s)", agentName, agentPhase)
 			}
