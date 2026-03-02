@@ -17,15 +17,17 @@
 /**
  * Grove settings page component
  *
- * Displays grove configuration and danger-zone actions (delete).
+ * Displays grove-scoped environment variables, secrets, and danger-zone actions (delete).
  */
 
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import type { PageData, Grove } from '../../shared/types.js';
-import { can } from '../../shared/types.js';
+import { can, canAny } from '../../shared/types.js';
 import { apiFetch } from '../../client/api.js';
+import '../shared/env-var-list.js';
+import '../shared/secret-list.js';
 
 @customElement('scion-page-grove-settings')
 export class ScionPageGroveSettings extends LitElement {
@@ -303,6 +305,22 @@ export class ScionPageGroveSettings extends LitElement {
         <sl-icon name="gear"></sl-icon>
         <h1>${this.grove.name} Settings</h1>
       </div>
+
+      ${canAny(this.grove._capabilities, 'update', 'manage') ? html`
+        <scion-env-var-list
+          scope="grove"
+          scopeId=${this.groveId}
+          apiBasePath="/api/v1/groves/${this.groveId}"
+          compact
+        ></scion-env-var-list>
+
+        <scion-secret-list
+          scope="grove"
+          scopeId=${this.groveId}
+          apiBasePath="/api/v1/groves/${this.groveId}"
+          compact
+        ></scion-secret-list>
+      ` : ''}
 
       ${can(this.grove._capabilities, 'delete') ? html`
         <div class="section danger-section">

@@ -845,16 +845,6 @@ export class ScionPageGroveDetail extends LitElement {
                 </a>
               `
             : nothing}
-          ${canAny(this.grove?._capabilities, 'update', 'manage')
-            ? html`
-                <a href="/groves/${this.groveId}/configuration" style="text-decoration: none;">
-                  <sl-button size="small">
-                    <sl-icon slot="prefix" name="sliders"></sl-icon>
-                    Configuration
-                  </sl-button>
-                </a>
-              `
-            : nothing}
           ${canAny(this.grove?._capabilities, 'update', 'delete', 'manage')
             ? html`
                 <a href="/groves/${this.groveId}/settings" style="text-decoration: none;">

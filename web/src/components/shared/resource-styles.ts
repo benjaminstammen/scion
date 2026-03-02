@@ -18,7 +18,7 @@
  * Shared CSS styles for env var and secret list components.
  *
  * Covers table, dialog, badge, empty/loading/error states, and
- * compact section layout used by grove-configuration.
+ * compact section layout used by grove-settings.
  */
 
 import { css } from 'lit';
