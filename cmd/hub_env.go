@@ -22,10 +22,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/spf13/cobra"
 )
+
+// scopeInferSentinel is used as NoOptDefVal for --grove and --broker flags,
+// allowing bare flag usage (e.g. --grove) to infer scope from settings.
+const scopeInferSentinel = "\x00"
 
 var (
 	envGroveScope  string
@@ -58,8 +63,8 @@ Examples:
   # Set a grove-scoped variable (infer grove from current directory)
   scion hub env set --grove API_URL=https://api.example.com
 
-  # Set a grove-scoped variable with explicit grove ID
-  scion hub env set --grove=abc123 API_URL=https://api.example.com
+  # Set a grove-scoped variable for a specific grove (by name, slug, or ID)
+  scion hub env set --grove=my-grove API_URL=https://api.example.com
 
   # List all user variables
   scion hub env get
@@ -121,7 +126,8 @@ to list variables at different scopes.
 
 Examples:
   scion hub env list                    # List all user variables
-  scion hub env list --grove            # List grove variables
+  scion hub env list --grove            # List current grove variables
+  scion hub env list --grove=my-grove   # List variables for a specific grove
   scion hub env list --json             # Output as JSON`,
 	Args: cobra.NoArgs,
 	RunE: runEnvList,
@@ -148,10 +154,14 @@ func init() {
 	hubEnvCmd.AddCommand(hubEnvListCmd)
 	hubEnvCmd.AddCommand(hubEnvClearCmd)
 
-	// Add scope flags to all subcommands
+	// Add scope flags to all subcommands.
+	// NoOptDefVal allows bare --grove/--broker (no value) to infer from settings,
+	// while --grove=<name> or --broker=<name> accepts an explicit name or ID.
 	for _, cmd := range []*cobra.Command{hubEnvSetCmd, hubEnvGetCmd, hubEnvListCmd, hubEnvClearCmd} {
-		cmd.Flags().StringVar(&envGroveScope, "grove", "", "Grove scope (use flag without value to infer from current directory, or provide grove ID)")
-		cmd.Flags().StringVar(&envBrokerScope, "broker", "", "Broker scope (use flag without value to use current broker, or provide broker ID)")
+		cmd.Flags().StringVar(&envGroveScope, "grove", "", "Grove scope (bare flag infers current grove, or use --grove=<name|id>)")
+		cmd.Flags().Lookup("grove").NoOptDefVal = scopeInferSentinel
+		cmd.Flags().StringVar(&envBrokerScope, "broker", "", "Broker scope (bare flag infers current broker, or use --broker=<name|id>)")
+		cmd.Flags().Lookup("broker").NoOptDefVal = scopeInferSentinel
 	}
 
 	hubEnvGetCmd.Flags().BoolVar(&envOutputJSON, "json", false, "Output in JSON format")
@@ -163,7 +173,10 @@ func init() {
 	hubEnvSetCmd.Flags().BoolVar(&envSecret, "secret", false, "Treat as a secret (encrypted, value never returned)")
 }
 
-// resolveEnvScope determines the scope and scopeID based on flags
+// resolveEnvScope determines the scope and scopeID based on flags.
+// When --grove or --broker is used bare (no value), scopeID is inferred from settings.
+// When a value is provided, it is returned as-is and may need further resolution
+// (name/slug to UUID) via resolveScopeID.
 func resolveEnvScope(cmd *cobra.Command, settings *config.Settings) (scope, scopeID string, err error) {
 	groveSet := cmd.Flags().Changed("grove")
 	brokerSet := cmd.Flags().Changed("broker")
@@ -174,8 +187,13 @@ func resolveEnvScope(cmd *cobra.Command, settings *config.Settings) (scope, scop
 
 	if groveSet {
 		scope = "grove"
-		if envGroveScope != "" {
-			scopeID = envGroveScope
+		groveVal := envGroveScope
+		if groveVal == scopeInferSentinel {
+			groveVal = ""
+		}
+		if groveVal != "" {
+			// Explicit value — may be a name, slug, or UUID (resolved later)
+			scopeID = groveVal
 		} else {
 			// Infer from settings
 			if settings.Hub != nil && settings.Hub.GroveID != "" {
@@ -189,8 +207,13 @@ func resolveEnvScope(cmd *cobra.Command, settings *config.Settings) (scope, scop
 
 	if brokerSet {
 		scope = "runtime_broker"
-		if envBrokerScope != "" {
-			scopeID = envBrokerScope
+		brokerVal := envBrokerScope
+		if brokerVal == scopeInferSentinel {
+			brokerVal = ""
+		}
+		if brokerVal != "" {
+			// Explicit value — may be a name or UUID (resolved later)
+			scopeID = brokerVal
 		} else {
 			// Infer from settings
 			if settings.Hub != nil && settings.Hub.BrokerID != "" {
@@ -204,6 +227,34 @@ func resolveEnvScope(cmd *cobra.Command, settings *config.Settings) (scope, scop
 
 	// Default to user scope
 	return "user", "", nil
+}
+
+// resolveScopeID resolves a scope ID that may be a human-friendly name or slug
+// into a UUID by querying the hub API. If the scopeID is already a valid UUID
+// or is empty, it is returned unchanged.
+func resolveScopeID(ctx context.Context, client hubclient.Client, scope, scopeID string) (string, error) {
+	if scopeID == "" {
+		return scopeID, nil
+	}
+	// Already a UUID — no resolution needed
+	if _, err := uuid.Parse(scopeID); err == nil {
+		return scopeID, nil
+	}
+	switch scope {
+	case "grove":
+		grove, err := resolveGroveByNameOrID(ctx, client, scopeID)
+		if err != nil {
+			return "", err
+		}
+		return grove.ID, nil
+	case "runtime_broker":
+		broker, err := resolveBrokerByNameOrID(ctx, client, scopeID)
+		if err != nil {
+			return "", err
+		}
+		return broker.ID, nil
+	}
+	return scopeID, nil
 }
 
 func runEnvSet(cmd *cobra.Command, args []string) error {
@@ -251,6 +302,14 @@ func runEnvSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
+
 	// Validate --always and --as-needed are mutually exclusive
 	if envAlways && envAsNeeded {
 		return fmt.Errorf("--always and --as-needed are mutually exclusive")
@@ -264,9 +323,6 @@ func runEnvSet(cmd *cobra.Command, args []string) error {
 		injectionMode = "as_needed"
 	}
 	// If neither is set, leave empty to let the server default to "as_needed"
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	// When --secret flag is set, redirect to the Secret API instead of Env API
 	if envSecret {
@@ -353,6 +409,11 @@ func runEnvGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
+
 	// If key is provided, get specific variable
 	if len(args) == 1 {
 		key := args[0]
@@ -407,6 +468,11 @@ func runEnvList(cmd *cobra.Command, _ []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
 
 	opts := &hubclient.ListEnvOptions{
 		Scope:   scope,
@@ -483,6 +549,11 @@ func runEnvClear(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
 
 	opts := &hubclient.EnvScopeOptions{
 		Scope:   scope,

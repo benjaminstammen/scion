@@ -1728,8 +1728,8 @@ type brokerGroveStatus struct {
 	Name string `json:"name"`
 }
 
-// resolveGroveByNameOrID resolves a grove identifier (name or ID) to a grove.
-// It first attempts to fetch by ID, and if that fails with a 404, tries to find by name.
+// resolveGroveByNameOrID resolves a grove identifier (name, slug, or ID) to a grove.
+// It tries multiple strategies in order: direct ID lookup, slug, then name.
 // Returns the grove if found, or an error if not found or multiple matches.
 func resolveGroveByNameOrID(ctx context.Context, client hubclient.Client, nameOrID string) (*hubclient.Grove, error) {
 	// First try to fetch by ID directly
@@ -1743,8 +1743,19 @@ func resolveGroveByNameOrID(ctx context.Context, client hubclient.Client, nameOr
 		return nil, err
 	}
 
-	// ID not found, try to find by name
+	// Try by slug
 	resp, err := client.Groves().List(ctx, &hubclient.ListGrovesOptions{
+		Slug: nameOrID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to search for grove: %w", err)
+	}
+	if len(resp.Groves) == 1 {
+		return &resp.Groves[0], nil
+	}
+
+	// Try by name
+	resp, err = client.Groves().List(ctx, &hubclient.ListGrovesOptions{
 		Name: nameOrID,
 	})
 	if err != nil {

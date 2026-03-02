@@ -162,10 +162,14 @@ func init() {
 	hubSecretCmd.AddCommand(hubSecretListCmd)
 	hubSecretCmd.AddCommand(hubSecretClearCmd)
 
-	// Add scope flags to all subcommands
+	// Add scope flags to all subcommands.
+	// NoOptDefVal allows bare --grove/--broker (no value) to infer from settings,
+	// while --grove=<name> or --broker=<name> accepts an explicit name or ID.
 	for _, cmd := range []*cobra.Command{hubSecretSetCmd, hubSecretGetCmd, hubSecretListCmd, hubSecretClearCmd} {
-		cmd.Flags().StringVar(&secretGroveScope, "grove", "", "Grove scope (use flag without value to infer from current directory, or provide grove ID)")
-		cmd.Flags().StringVar(&secretBrokerScope, "broker", "", "Broker scope (use flag without value to use current broker, or provide broker ID)")
+		cmd.Flags().StringVar(&secretGroveScope, "grove", "", "Grove scope (bare flag infers current grove, or use --grove=<name|id>)")
+		cmd.Flags().Lookup("grove").NoOptDefVal = scopeInferSentinel
+		cmd.Flags().StringVar(&secretBrokerScope, "broker", "", "Broker scope (bare flag infers current broker, or use --broker=<name|id>)")
+		cmd.Flags().Lookup("broker").NoOptDefVal = scopeInferSentinel
 	}
 
 	hubSecretGetCmd.Flags().BoolVar(&secretOutputJSON, "json", false, "Output in JSON format")
@@ -176,7 +180,10 @@ func init() {
 	hubSecretSetCmd.Flags().StringVar(&secretTarget, "target", "", "Projection target (env var name, json key, or file path; defaults to KEY)")
 }
 
-// resolveSecretScope determines the scope and scopeID based on flags
+// resolveSecretScope determines the scope and scopeID based on flags.
+// When --grove or --broker is used bare (no value), scopeID is inferred from settings.
+// When a value is provided, it is returned as-is and may need further resolution
+// (name/slug to UUID) via resolveScopeID.
 func resolveSecretScope(cmd *cobra.Command, settings *config.Settings) (scope, scopeID string, err error) {
 	groveSet := cmd.Flags().Changed("grove")
 	brokerSet := cmd.Flags().Changed("broker")
@@ -187,8 +194,13 @@ func resolveSecretScope(cmd *cobra.Command, settings *config.Settings) (scope, s
 
 	if groveSet {
 		scope = "grove"
-		if secretGroveScope != "" {
-			scopeID = secretGroveScope
+		groveVal := secretGroveScope
+		if groveVal == scopeInferSentinel {
+			groveVal = ""
+		}
+		if groveVal != "" {
+			// Explicit value — may be a name, slug, or UUID (resolved later)
+			scopeID = groveVal
 		} else {
 			// Infer from settings
 			if settings.Hub != nil && settings.Hub.GroveID != "" {
@@ -202,8 +214,13 @@ func resolveSecretScope(cmd *cobra.Command, settings *config.Settings) (scope, s
 
 	if brokerSet {
 		scope = "runtime_broker"
-		if secretBrokerScope != "" {
-			scopeID = secretBrokerScope
+		brokerVal := secretBrokerScope
+		if brokerVal == scopeInferSentinel {
+			brokerVal = ""
+		}
+		if brokerVal != "" {
+			// Explicit value — may be a name or UUID (resolved later)
+			scopeID = brokerVal
 		} else {
 			// Infer from settings
 			if settings.Hub != nil && settings.Hub.BrokerID != "" {
@@ -291,6 +308,11 @@ func runSecretSet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
+
 	req := &hubclient.SetSecretRequest{
 		Value:   value,
 		Scope:   scope,
@@ -341,6 +363,11 @@ func runSecretGet(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
 
 	// If key is provided, get specific secret metadata
 	if len(args) == 1 {
@@ -408,6 +435,11 @@ func runSecretList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
+
 	opts := &hubclient.ListSecretOptions{
 		Scope:   scope,
 		ScopeID: scopeID,
@@ -468,6 +500,11 @@ func runSecretClear(cmd *cobra.Command, args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	scopeID, err = resolveScopeID(ctx, client, scope, scopeID)
+	if err != nil {
+		return err
+	}
 
 	opts := &hubclient.SecretScopeOptions{
 		Scope:   scope,
