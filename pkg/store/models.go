@@ -46,6 +46,9 @@ type Agent struct {
 	ContainerStatus string `json:"containerStatus,omitempty"` // Container-level status
 	RuntimeState    string `json:"runtimeState,omitempty"`    // Low-level runtime state
 
+	// Stalled detection
+	StalledFromActivity string `json:"stalledFromActivity,omitempty"` // Activity before stalled; empty when not stalled
+
 	// Runtime configuration
 	Image           string `json:"image,omitempty"`
 	Detached        bool   `json:"detached"`

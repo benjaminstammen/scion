@@ -3635,7 +3635,18 @@ func (s *Server) handleBrokerHeartbeat(w http.ResponseWriter, r *http.Request, i
 				// on every heartbeat and prevent stalled detection from
 				// ever triggering.
 				if agentHB.Activity != agent.Activity {
-					statusUpdate.Activity = agentHB.Activity
+					if agent.Activity == string(state.ActivityStalled) {
+						// The agent is currently marked stalled. Only clear the
+						// stall if the broker reports a genuinely different
+						// activity than what caused the stall. If the broker is
+						// still reporting the same pre-stall activity, the agent
+						// hasn't recovered — keep it stalled.
+						if agentHB.Activity != agent.StalledFromActivity {
+							statusUpdate.Activity = agentHB.Activity
+						}
+					} else {
+						statusUpdate.Activity = agentHB.Activity
+					}
 				}
 			} else {
 				// Legacy path: no structured fields, derive from ContainerStatus

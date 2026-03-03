@@ -2555,6 +2555,122 @@ func TestBrokerHeartbeat_RepeatedActivityDoesNotRefreshLastActivityEvent(t *test
 		"last_activity_event should be refreshed when activity changes")
 }
 
+func TestBrokerHeartbeat_StalledAgentNotOverwrittenBySameActivity(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create grove, broker, and agent
+	grove := &store.Grove{ID: "grove-stall-keep", Name: "Stall Keep Grove", Slug: "stall-keep-grove"}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	broker := &store.RuntimeBroker{
+		ID: "broker-stall-keep", Name: "Stall Keep Broker", Slug: "stall-keep-broker",
+		Status: store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
+
+	agent := &store.Agent{
+		ID: "agent-stall-keep", Slug: "stall-keep-slug", Name: "Stall Keep Agent",
+		GroveID: grove.ID, RuntimeBrokerID: broker.ID,
+		Phase: string(state.PhaseRunning),
+	}
+	require.NoError(t, s.CreateAgent(ctx, agent))
+
+	// Set agent to running+thinking
+	require.NoError(t, s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
+		Phase:    string(state.PhaseRunning),
+		Activity: string(state.ActivityThinking),
+	}))
+
+	// Simulate stalled detection: mark agent stalled with stalled_from_activity = thinking
+	db := s.(*sqlite.SQLiteStore).DB()
+	staleActivity := time.Now().Add(-10 * time.Minute)
+	_, err := db.ExecContext(ctx,
+		"UPDATE agents SET activity = 'stalled', stalled_from_activity = 'thinking', last_activity_event = ?, last_seen = ? WHERE id = ?",
+		staleActivity, time.Now().Add(-10*time.Second), agent.ID)
+	require.NoError(t, err)
+
+	// Send heartbeat reporting the same pre-stall activity ("thinking")
+	hb := brokerHeartbeatRequest{
+		Status: "online",
+		Groves: []brokerGroveHeartbeat{{
+			GroveID:    grove.ID,
+			AgentCount: 1,
+			Agents: []brokerAgentHeartbeat{{
+				Slug:     agent.Slug,
+				Phase:    string(state.PhaseRunning),
+				Activity: "thinking",
+			}},
+		}},
+	}
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/runtime-brokers/"+broker.ID+"/heartbeat", hb)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Agent should still be stalled — heartbeat with same activity should NOT overwrite
+	updated, err := s.GetAgent(ctx, agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "stalled", updated.Activity, "agent should remain stalled when heartbeat reports same pre-stall activity")
+	assert.Equal(t, "thinking", updated.StalledFromActivity, "stalled_from_activity should be preserved")
+}
+
+func TestBrokerHeartbeat_StalledAgentRecoveredByNewActivity(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	// Create grove, broker, and agent
+	grove := &store.Grove{ID: "grove-stall-recover", Name: "Stall Recover Grove", Slug: "stall-recover-grove"}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	broker := &store.RuntimeBroker{
+		ID: "broker-stall-recover", Name: "Stall Recover Broker", Slug: "stall-recover-broker",
+		Status: store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
+
+	agent := &store.Agent{
+		ID: "agent-stall-recover", Slug: "stall-recover-slug", Name: "Stall Recover Agent",
+		GroveID: grove.ID, RuntimeBrokerID: broker.ID,
+		Phase: string(state.PhaseRunning),
+	}
+	require.NoError(t, s.CreateAgent(ctx, agent))
+
+	// Set agent to running+thinking
+	require.NoError(t, s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
+		Phase:    string(state.PhaseRunning),
+		Activity: string(state.ActivityThinking),
+	}))
+
+	// Simulate stalled detection: mark agent stalled with stalled_from_activity = thinking
+	db := s.(*sqlite.SQLiteStore).DB()
+	staleActivity := time.Now().Add(-10 * time.Minute)
+	_, err := db.ExecContext(ctx,
+		"UPDATE agents SET activity = 'stalled', stalled_from_activity = 'thinking', last_activity_event = ?, last_seen = ? WHERE id = ?",
+		staleActivity, time.Now().Add(-10*time.Second), agent.ID)
+	require.NoError(t, err)
+
+	// Send heartbeat reporting a genuinely new activity ("executing")
+	hb := brokerHeartbeatRequest{
+		Status: "online",
+		Groves: []brokerGroveHeartbeat{{
+			GroveID:    grove.ID,
+			AgentCount: 1,
+			Agents: []brokerAgentHeartbeat{{
+				Slug:     agent.Slug,
+				Phase:    string(state.PhaseRunning),
+				Activity: "executing",
+			}},
+		}},
+	}
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/runtime-brokers/"+broker.ID+"/heartbeat", hb)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Agent should recover — new activity is genuinely different from stalled_from_activity
+	updated, err := s.GetAgent(ctx, agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "executing", updated.Activity, "agent should recover when heartbeat reports genuinely new activity")
+	assert.Empty(t, updated.StalledFromActivity, "stalled_from_activity should be cleared on recovery")
+}
+
 func TestCreateAgent_RestartCreatesNotificationSubscription(t *testing.T) {
 	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)

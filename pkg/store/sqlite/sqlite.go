@@ -99,6 +99,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 		migrationV22,
 		migrationV23,
 		migrationV24,
+		migrationV25,
 	}
 
 	// Create migrations table if not exists
@@ -662,6 +663,13 @@ ALTER TABLE agents ADD COLUMN last_activity_event TIMESTAMP;
 UPDATE agents SET last_activity_event = COALESCE(last_seen, updated_at, created_at);
 `
 
+// Migration V25: Add stalled_from_activity column for stalled detection.
+// Records the activity that was active when the agent was marked stalled,
+// so heartbeats can distinguish "still stuck" from "genuinely recovered".
+const migrationV25 = `
+ALTER TABLE agents ADD COLUMN stalled_from_activity TEXT DEFAULT '';
+`
+
 // Helper functions for JSON marshaling/unmarshaling
 func marshalJSON(v interface{}) string {
 	if v == nil {
@@ -715,16 +723,18 @@ func (s *SQLiteStore) CreateAgent(ctx context.Context, agent *store.Agent) error
 			labels, annotations,
 			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
+			stalled_from_activity,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, last_activity_event, deleted_at,
 			created_by, owner_id, visibility, state_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		agent.ID, agent.Slug, agent.Name, agent.Template, agent.GroveID,
 		marshalJSON(agent.Labels), marshalJSON(agent.Annotations),
 		agent.Phase, agent.Activity, agent.ToolName,
 		agent.ConnectionState, agent.ContainerStatus, agent.RuntimeState,
+		agent.StalledFromActivity,
 		agent.Image, agent.Detached, agent.Runtime, nullableString(agent.RuntimeBrokerID), agent.WebPTYEnabled, agent.TaskSummary, agent.Message,
 		marshalJSON(agent.AppliedConfig),
 		agent.Created, agent.Updated, nullableTime(agent.LastSeen), nullableTime(agent.LastActivityEvent), nullableTime(agent.DeletedAt),
@@ -750,6 +760,7 @@ func (s *SQLiteStore) GetAgent(ctx context.Context, id string) (*store.Agent, er
 			labels, annotations,
 			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
+			stalled_from_activity,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, last_activity_event, deleted_at,
@@ -760,6 +771,7 @@ func (s *SQLiteStore) GetAgent(ctx context.Context, id string) (*store.Agent, er
 		&labels, &annotations,
 		&agent.Phase, &agent.Activity, &toolName,
 		&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
+		&agent.StalledFromActivity,
 		&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 		&appliedConfig,
 		&agent.Created, &agent.Updated, &lastSeen, &lastActivityEvent, &deletedAt,
@@ -808,6 +820,7 @@ func (s *SQLiteStore) GetAgentBySlug(ctx context.Context, groveID, slug string) 
 			labels, annotations,
 			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
+			stalled_from_activity,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, last_activity_event, deleted_at,
@@ -818,6 +831,7 @@ func (s *SQLiteStore) GetAgentBySlug(ctx context.Context, groveID, slug string) 
 		&labels, &annotations,
 		&agent.Phase, &agent.Activity, &toolName,
 		&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
+		&agent.StalledFromActivity,
 		&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 		&appliedConfig,
 		&agent.Created, &agent.Updated, &lastSeen, &lastActivityEvent, &deletedAt,
@@ -865,6 +879,7 @@ func (s *SQLiteStore) UpdateAgent(ctx context.Context, agent *store.Agent) error
 			labels = ?, annotations = ?,
 			phase = ?, activity = ?, tool_name = ?,
 			connection_state = ?, container_status = ?, runtime_state = ?,
+			stalled_from_activity = ?,
 			image = ?, detached = ?, runtime = ?, runtime_broker_id = ?, web_pty_enabled = ?, task_summary = ?, message = ?,
 			applied_config = ?,
 			updated_at = ?, last_seen = ?, last_activity_event = ?, deleted_at = ?,
@@ -875,6 +890,7 @@ func (s *SQLiteStore) UpdateAgent(ctx context.Context, agent *store.Agent) error
 		marshalJSON(agent.Labels), marshalJSON(agent.Annotations),
 		agent.Phase, agent.Activity, agent.ToolName,
 		agent.ConnectionState, agent.ContainerStatus, agent.RuntimeState,
+		agent.StalledFromActivity,
 		agent.Image, agent.Detached, agent.Runtime, nullableString(agent.RuntimeBrokerID), agent.WebPTYEnabled, agent.TaskSummary, agent.Message,
 		marshalJSON(agent.AppliedConfig),
 		agent.Updated, nullableTime(agent.LastSeen), nullableTime(agent.LastActivityEvent), nullableTime(agent.DeletedAt),
@@ -970,6 +986,7 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 			labels, annotations,
 			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
+			stalled_from_activity,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, last_activity_event, deleted_at,
@@ -996,6 +1013,7 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 			&labels, &annotations,
 			&agent.Phase, &agent.Activity, &toolName,
 			&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
+			&agent.StalledFromActivity,
 			&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 			&appliedConfig,
 			&agent.Created, &agent.Updated, &lastSeen, &lastActivityEvent, &deletedAt,
@@ -1061,6 +1079,7 @@ func (s *SQLiteStore) UpdateAgentStatus(ctx context.Context, id string, su store
 			container_status = COALESCE(NULLIF(?, ''), container_status),
 			runtime_state = COALESCE(NULLIF(?, ''), runtime_state),
 			task_summary = COALESCE(NULLIF(?, ''), task_summary),
+			stalled_from_activity = CASE WHEN ? != '' THEN '' ELSE stalled_from_activity END,
 			last_activity_event = CASE WHEN ? != '' THEN ? ELSE last_activity_event END,
 			updated_at = ?,
 			last_seen = ?
@@ -1071,6 +1090,7 @@ func (s *SQLiteStore) UpdateAgentStatus(ctx context.Context, id string, su store
 		activityProvided, su.ToolName,
 		su.Message, su.ConnectionState, su.ContainerStatus,
 		su.RuntimeState, su.TaskSummary,
+		su.Activity,
 		su.Activity, now,
 		now, now, id,
 	)
@@ -1136,6 +1156,7 @@ func (s *SQLiteStore) MarkStaleAgentsOffline(ctx context.Context, threshold time
 			labels, annotations,
 			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
+			stalled_from_activity,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, last_activity_event, deleted_at,
@@ -1163,6 +1184,7 @@ func (s *SQLiteStore) MarkStaleAgentsOffline(ctx context.Context, threshold time
 			&labels, &annotations,
 			&agent.Phase, &agent.Activity, &toolName,
 			&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
+			&agent.StalledFromActivity,
 			&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 			&appliedConfig,
 			&agent.Created, &agent.Updated, &lastSeen, &lastActivityEvent, &deletedAt,
@@ -1220,6 +1242,7 @@ func (s *SQLiteStore) MarkStalledAgents(ctx context.Context, activityThreshold, 
 	// - Are not already in a terminal/sticky activity or already stalled/offline
 	_, err = tx.ExecContext(ctx, `
 		UPDATE agents SET
+			stalled_from_activity = activity,
 			activity = 'stalled',
 			updated_at = ?
 		WHERE last_activity_event < ?
@@ -1239,6 +1262,7 @@ func (s *SQLiteStore) MarkStalledAgents(ctx context.Context, activityThreshold, 
 			labels, annotations,
 			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
+			stalled_from_activity,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, last_activity_event, deleted_at,
@@ -1268,6 +1292,7 @@ func (s *SQLiteStore) MarkStalledAgents(ctx context.Context, activityThreshold, 
 			&labels, &annotations,
 			&agent.Phase, &agent.Activity, &toolName,
 			&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
+			&agent.StalledFromActivity,
 			&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 			&appliedConfig,
 			&agent.Created, &agent.Updated, &lastSeen, &lastActivityEvent, &deletedAt,

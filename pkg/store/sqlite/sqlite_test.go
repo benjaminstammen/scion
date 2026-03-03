@@ -1679,10 +1679,19 @@ func TestMarkStalledAgents(t *testing.T) {
 
 	// Verify the returned agents
 	returnedIDs := make(map[string]bool)
+	// Build a map from ID to pre-stall activity for validation
+	expectedPreStall := make(map[string]string)
+	for i, id := range expectedIDs {
+		expectedPreStall[id] = stalledActivities[i]
+	}
 	for _, a := range agents {
 		returnedIDs[a.ID] = true
 		assert.Equal(t, "stalled", a.Activity, "returned agent should have stalled activity")
 		assert.Equal(t, "running", a.Phase, "returned agent should still have running phase")
+		if expected, ok := expectedPreStall[a.ID]; ok {
+			assert.Equal(t, expected, a.StalledFromActivity,
+				"stalled_from_activity should record the pre-stall activity for agent %s", a.Slug)
+		}
 	}
 	for _, id := range expectedIDs {
 		assert.True(t, returnedIDs[id], "expected agent %s to be in returned set", id)

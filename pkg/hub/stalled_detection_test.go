@@ -120,6 +120,10 @@ func TestAgentStalledDetectionHandler_MarksStalledAgents(t *testing.T) {
 	if a.Activity != string(state.ActivityStalled) {
 		t.Errorf("agent activity = %q, want %q", a.Activity, string(state.ActivityStalled))
 	}
+	// Verify stalled_from_activity records the pre-stall activity
+	if a.StalledFromActivity != string(state.ActivityThinking) {
+		t.Errorf("stalled_from_activity = %q, want %q", a.StalledFromActivity, string(state.ActivityThinking))
+	}
 }
 
 func TestAgentStalledDetectionHandler_NoStalledAgents(t *testing.T) {
@@ -193,6 +197,87 @@ func TestAgentStalledDetectionHandler_ClearedByActivityEvent(t *testing.T) {
 	}
 	if a.Activity != string(state.ActivityThinking) {
 		t.Errorf("agent activity = %q, want %q", a.Activity, string(state.ActivityThinking))
+	}
+}
+
+func TestAgentStalledDetectionHandler_StalledFromActivityIsPreserved(t *testing.T) {
+	srv, s, _ := setupStalledTestServer(t)
+	ctx := context.Background()
+
+	grove := &store.Grove{
+		ID:         api.NewUUID(),
+		Name:       "Stalled Preserved Grove",
+		Slug:       "stalled-preserved-grove",
+		Visibility: store.VisibilityPrivate,
+	}
+	if err := s.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	agent := &store.Agent{
+		ID:         api.NewUUID(),
+		Slug:       "stalled-preserved",
+		Name:       "Stalled Preserved",
+		Template:   "claude",
+		GroveID:    grove.ID,
+		Phase:      string(state.PhaseCreated),
+		Visibility: store.VisibilityPrivate,
+	}
+	if err := s.CreateAgent(ctx, agent); err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	// Set to running with executing activity
+	if err := s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
+		Phase:    string(state.PhaseRunning),
+		Activity: string(state.ActivityExecuting),
+	}); err != nil {
+		t.Fatalf("failed to update agent status: %v", err)
+	}
+
+	// Make activity stale but keep heartbeat recent
+	staleActivity := time.Now().Add(-10 * time.Minute)
+	recentHB := time.Now().Add(-30 * time.Second)
+	db := s.(*sqlite.SQLiteStore).DB()
+	if _, err := db.ExecContext(ctx,
+		"UPDATE agents SET last_activity_event = ?, last_seen = ? WHERE id = ?",
+		staleActivity, recentHB, agent.ID); err != nil {
+		t.Fatalf("failed to set stale activity: %v", err)
+	}
+
+	// Run stalled detection
+	handler := srv.agentStalledDetectionHandler()
+	handler(ctx)
+
+	// Verify stalled_from_activity is set to the pre-stall activity
+	a, err := s.GetAgent(ctx, agent.ID)
+	if err != nil {
+		t.Fatalf("failed to get agent: %v", err)
+	}
+	if a.Activity != string(state.ActivityStalled) {
+		t.Errorf("agent activity = %q, want %q", a.Activity, string(state.ActivityStalled))
+	}
+	if a.StalledFromActivity != string(state.ActivityExecuting) {
+		t.Errorf("stalled_from_activity = %q, want %q", a.StalledFromActivity, string(state.ActivityExecuting))
+	}
+
+	// Now simulate recovery: update to a new activity
+	if err := s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
+		Activity: string(state.ActivityThinking),
+	}); err != nil {
+		t.Fatalf("failed to send recovery activity: %v", err)
+	}
+
+	// Verify stalled_from_activity is cleared on recovery
+	a, err = s.GetAgent(ctx, agent.ID)
+	if err != nil {
+		t.Fatalf("failed to get agent after recovery: %v", err)
+	}
+	if a.Activity != string(state.ActivityThinking) {
+		t.Errorf("agent activity = %q, want %q", a.Activity, string(state.ActivityThinking))
+	}
+	if a.StalledFromActivity != "" {
+		t.Errorf("stalled_from_activity = %q, want empty after recovery", a.StalledFromActivity)
 	}
 }
 
