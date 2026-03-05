@@ -211,7 +211,7 @@ When agents are dispatched via the Hub, secrets are resolved and projected into 
 | `GOOGLE_CLOUD_PROJECT` | environment | `GOOGLE_CLOUD_PROJECT` | GoogleCloudProject |
 | `GOOGLE_CLOUD_REGION` | environment | `GOOGLE_CLOUD_REGION` | GoogleCloudRegion |
 | `GOOGLE_APPLICATION_CREDENTIALS` | file | `~/.config/gcloud/application_default_credentials.json` | GoogleAppCredentials |
-| `OAUTH_CREDS` | file | `~/.gemini/oauth_creds.json` | OAuthCreds |
+| `GEMINI_OAUTH_CREDS` | file | `~/.gemini/oauth_creds.json` | OAuthCreds |
 | `CODEX_AUTH` | file | `~/.codex/auth.json` | CodexAuthFile |
 | `OPENCODE_AUTH` | file | `~/.local/share/opencode/auth.json` | OpenCodeAuthFile |
 

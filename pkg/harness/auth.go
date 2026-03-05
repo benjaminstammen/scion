@@ -125,7 +125,7 @@ func OverlayFileSecrets(auth *api.AuthConfig, secrets []api.ResolvedSecret) {
 			strings.HasSuffix(target, "/application_default_credentials.json"):
 			auth.GoogleAppCredentials = target
 			auth.GoogleAppCredentialsExplicit = false // container GCP SDK auto-discovers well-known path
-		case name == "OAUTH_CREDS" ||
+		case name == "GEMINI_OAUTH_CREDS" ||
 			strings.HasSuffix(target, "/oauth_creds.json"):
 			auth.OAuthCreds = target
 		case name == "CODEX_AUTH" ||

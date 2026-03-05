@@ -766,7 +766,7 @@ func TestOverlayFileSecrets(t *testing.T) {
 		{
 			name: "OAuth by name",
 			secrets: []api.ResolvedSecret{
-				{Name: "OAUTH_CREDS", Type: "file", Target: "/home/gemini/.gemini/oauth_creds.json"},
+				{Name: "GEMINI_OAUTH_CREDS", Type: "file", Target: "/home/gemini/.gemini/oauth_creds.json"},
 			},
 			check: func(t *testing.T, auth api.AuthConfig) {
 				if auth.OAuthCreds != "/home/gemini/.gemini/oauth_creds.json" {

@@ -191,7 +191,7 @@ scion hub secret set --type file \
 # Gemini OAuth credentials
 scion hub secret set --type file \
   --target ~/.gemini/oauth_creds.json \
-  OAUTH_CREDS @~/.gemini/oauth_creds.json
+  GEMINI_OAUTH_CREDS @~/.gemini/oauth_creds.json
 ```
 
 **Project and region** (environment type):
@@ -213,7 +213,7 @@ scion hub secret set GOOGLE_CLOUD_REGION us-east5
 | `GOOGLE_CLOUD_PROJECT` | environment | — |
 | `GOOGLE_CLOUD_REGION` | environment | — |
 | `GOOGLE_APPLICATION_CREDENTIALS` | file | `~/.config/gcloud/application_default_credentials.json` |
-| `OAUTH_CREDS` | file | `~/.gemini/oauth_creds.json` |
+| `GEMINI_OAUTH_CREDS` | file | `~/.gemini/oauth_creds.json` |
 | `CODEX_AUTH` | file | `~/.codex/auth.json` |
 | `OPENCODE_AUTH` | file | `~/.local/share/opencode/auth.json` |
 
