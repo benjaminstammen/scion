@@ -138,8 +138,8 @@ func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentHome, agentWo
 		envUpdates = map[string]string{"GOOGLE_CLOUD_PROJECT": "${GOOGLE_CLOUD_PROJECT}"}
 	case "vertex-ai":
 		envUpdates = map[string]string{
-			"GOOGLE_CLOUD_PROJECT":  "${GOOGLE_CLOUD_PROJECT}",
-			"GOOGLE_CLOUD_LOCATION": "${GOOGLE_CLOUD_LOCATION}",
+			"GOOGLE_CLOUD_PROJECT": "${GOOGLE_CLOUD_PROJECT}",
+			"GOOGLE_CLOUD_REGION":  "${GOOGLE_CLOUD_REGION}",
 		}
 		volUpdates = append(volUpdates, api.VolumeMount{
 			Source:   filepath.Join(home, ".config", "gcloud"),

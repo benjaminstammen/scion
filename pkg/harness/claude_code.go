@@ -71,6 +71,76 @@ func (c *ClaudeCode) HasSystemPrompt(agentHome string) bool {
 }
 
 func (c *ClaudeCode) Provision(ctx context.Context, agentName, agentHome, agentWorkspace string) error {
+	// 1. Update .claude.json project paths
+	if err := c.provisionClaudeJSON(agentHome, agentWorkspace); err != nil {
+		return err
+	}
+
+	// 2. Project auth-specific env vars into scion-agent.json
+	agentDir := filepath.Dir(agentHome)
+	scionAgentPath := filepath.Join(agentDir, "scion-agent.json")
+
+	data, err := os.ReadFile(scionAgentPath)
+	if err != nil {
+		return nil // No scion-agent.json, nothing to update
+	}
+	var cfg api.ScionConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("failed to parse scion-agent.json: %w", err)
+	}
+
+	var envUpdates map[string]string
+	var volUpdates []api.VolumeMount
+
+	home, _ := os.UserHomeDir()
+
+	switch cfg.AuthSelectedType {
+	case "api-key":
+		envUpdates = map[string]string{"ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"}
+	case "vertex-ai":
+		envUpdates = map[string]string{
+			"CLAUDE_CODE_USE_VERTEX":      "1",
+			"ANTHROPIC_VERTEX_PROJECT_ID": "${GOOGLE_CLOUD_PROJECT}",
+			"CLOUD_ML_REGION":             "${GOOGLE_CLOUD_REGION}",
+		}
+		if home != "" {
+			volUpdates = append(volUpdates, api.VolumeMount{
+				Source:   filepath.Join(home, ".config", "gcloud"),
+				Target:   "/home/scion/.config/gcloud",
+				ReadOnly: true,
+			})
+		}
+	}
+
+	if len(envUpdates) > 0 {
+		if cfg.Env == nil {
+			cfg.Env = make(map[string]string)
+		}
+		for k, v := range envUpdates {
+			if _, exists := cfg.Env[k]; !exists {
+				cfg.Env[k] = v
+			}
+		}
+	}
+
+	if len(volUpdates) > 0 {
+		cfg.Volumes = append(cfg.Volumes, volUpdates...)
+	}
+
+	if len(envUpdates) > 0 || len(volUpdates) > 0 {
+		newData, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal updated config: %w", err)
+		}
+		if err := os.WriteFile(scionAgentPath, newData, 0644); err != nil {
+			return fmt.Errorf("failed to write updated scion-agent.json: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *ClaudeCode) provisionClaudeJSON(agentHome, agentWorkspace string) error {
 	claudeJSONPath := filepath.Join(agentHome, ".claude.json")
 	if _, err := os.Stat(claudeJSONPath); os.IsNotExist(err) {
 		return nil

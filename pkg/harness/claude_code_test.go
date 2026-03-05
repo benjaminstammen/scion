@@ -118,6 +118,68 @@ func TestClaudeCode_Provision(t *testing.T) {
 	}
 }
 
+func TestClaudeCode_Provision_VertexAI(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentDir := tmpDir
+	agentHome := filepath.Join(agentDir, "home")
+	agentWorkspace := filepath.Join(tmpDir, "workspace")
+	os.MkdirAll(agentHome, 0755)
+	os.MkdirAll(agentWorkspace, 0755)
+
+	// Create .claude.json so provisionClaudeJSON doesn't skip
+	claudeJSONPath := filepath.Join(agentHome, ".claude.json")
+	os.WriteFile(claudeJSONPath, []byte(`{"projects":{}}`), 0644)
+
+	// Create scion-agent.json with vertex-ai auth type
+	scionAgentPath := filepath.Join(agentDir, "scion-agent.json")
+	scionCfg := api.ScionConfig{
+		AuthSelectedType: "vertex-ai",
+	}
+	data, _ := json.MarshalIndent(scionCfg, "", "  ")
+	os.WriteFile(scionAgentPath, data, 0644)
+
+	c := &ClaudeCode{}
+	err := c.Provision(context.Background(), "test-agent", agentHome, agentWorkspace)
+	if err != nil {
+		t.Fatalf("Provision failed: %v", err)
+	}
+
+	// Read back scion-agent.json and verify env projections
+	updated, err := os.ReadFile(scionAgentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var updatedCfg api.ScionConfig
+	if err := json.Unmarshal(updated, &updatedCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify harness-specific env entries
+	if updatedCfg.Env["CLAUDE_CODE_USE_VERTEX"] != "1" {
+		t.Errorf("CLAUDE_CODE_USE_VERTEX = %q, want %q", updatedCfg.Env["CLAUDE_CODE_USE_VERTEX"], "1")
+	}
+	if updatedCfg.Env["ANTHROPIC_VERTEX_PROJECT_ID"] != "${GOOGLE_CLOUD_PROJECT}" {
+		t.Errorf("ANTHROPIC_VERTEX_PROJECT_ID = %q, want %q", updatedCfg.Env["ANTHROPIC_VERTEX_PROJECT_ID"], "${GOOGLE_CLOUD_PROJECT}")
+	}
+	if updatedCfg.Env["CLOUD_ML_REGION"] != "${GOOGLE_CLOUD_REGION}" {
+		t.Errorf("CLOUD_ML_REGION = %q, want %q", updatedCfg.Env["CLOUD_ML_REGION"], "${GOOGLE_CLOUD_REGION}")
+	}
+
+	// Verify ADC volume mount
+	foundGcloudVol := false
+	for _, v := range updatedCfg.Volumes {
+		if strings.Contains(v.Target, ".config/gcloud") {
+			foundGcloudVol = true
+			if !v.ReadOnly {
+				t.Error("gcloud volume should be read-only")
+			}
+		}
+	}
+	if !foundGcloudVol {
+		t.Error("expected gcloud ADC volume mount for vertex-ai")
+	}
+}
+
 func TestClaudeCode_GetTelemetryEnv(t *testing.T) {
 	c := &ClaudeCode{}
 	env := c.GetTelemetryEnv()
