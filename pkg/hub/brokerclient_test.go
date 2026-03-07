@@ -405,7 +405,7 @@ func TestAuthenticatedBrokerClient_StartAgent_InvalidJSONFails(t *testing.T) {
 	defer server.Close()
 
 	client := NewAuthenticatedBrokerClient(db, false)
-	_, err = client.StartAgent(context.Background(), brokerID, server.URL, "agent-1", "", "", "", "", nil)
+	_, err = client.StartAgent(context.Background(), brokerID, server.URL, "agent-1", "", "", "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected StartAgent to fail on invalid JSON response")
 	}

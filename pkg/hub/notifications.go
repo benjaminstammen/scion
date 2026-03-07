@@ -37,6 +37,7 @@ type NotificationDispatcher struct {
 	log           *slog.Logger
 	stopCh        chan struct{}
 	stopOnce      sync.Once
+	wg            sync.WaitGroup
 }
 
 // NewNotificationDispatcher creates a new NotificationDispatcher.
@@ -57,7 +58,9 @@ func NewNotificationDispatcher(s store.Store, events *ChannelEventPublisher, get
 func (nd *NotificationDispatcher) Start() {
 	ch, unsubscribe := nd.events.Subscribe("grove.>.agent.status")
 
+	nd.wg.Add(1)
 	go func() {
+		defer nd.wg.Done()
 		defer unsubscribe()
 		for {
 			select {
@@ -75,10 +78,12 @@ func (nd *NotificationDispatcher) Start() {
 	nd.log.Info("Notification dispatcher started")
 }
 
-// Stop signals the dispatcher goroutine to exit. It is safe to call multiple times.
+// Stop signals the dispatcher goroutine to exit and waits for it to finish.
+// It is safe to call multiple times.
 func (nd *NotificationDispatcher) Stop() {
 	nd.stopOnce.Do(func() {
 		close(nd.stopCh)
+		nd.wg.Wait()
 		nd.log.Info("Notification dispatcher stopped")
 	})
 }

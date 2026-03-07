@@ -423,7 +423,7 @@ func TestHTTPRuntimeBrokerClient_StartAgent_InvalidJSONFails(t *testing.T) {
 	defer server.Close()
 
 	client := NewHTTPRuntimeBrokerClient()
-	_, err := client.StartAgent(context.Background(), "host-1", server.URL, "test-agent", "", "", "", "", nil)
+	_, err := client.StartAgent(context.Background(), "host-1", server.URL, "test-agent", "", "", "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected StartAgent to fail on invalid JSON response")
 	}

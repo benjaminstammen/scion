@@ -1959,7 +1959,7 @@ func (s *Server) initHubNativeGrove(grove *store.Grove) error {
 	}
 
 	scionDir := filepath.Join(workspacePath, ".scion")
-	if err := config.InitProject(scionDir, nil); err != nil {
+	if err := config.InitProject(scionDir, nil, config.InitProjectOpts{SkipRuntimeCheck: true}); err != nil {
 		return fmt.Errorf("failed to initialize .scion project: %w", err)
 	}
 

@@ -2061,7 +2061,7 @@ func TestUserList(t *testing.T) {
 	}
 }
 
-func TestUserCreate(t *testing.T) {
+func TestUserCreate_Forbidden(t *testing.T) {
 	srv, _ := testServer(t)
 
 	body := map[string]interface{}{
@@ -2072,21 +2072,8 @@ func TestUserCreate(t *testing.T) {
 
 	rec := doRequest(t, srv, http.MethodPost, "/api/v1/users", body)
 
-	if rec.Code != http.StatusCreated {
-		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var resp store.User
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if resp.Email != "newuser@example.com" {
-		t.Errorf("expected email 'newuser@example.com', got %q", resp.Email)
-	}
-
-	if resp.Role != store.UserRoleAdmin {
-		t.Errorf("expected role 'admin', got %q", resp.Role)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -335,7 +335,19 @@ func SeedAgnosticTemplate(targetDir string, force bool) error {
 	return SeedCommonFiles(targetDir, "", force)
 }
 
-func InitProject(targetDir string, harnesses []api.Harness) error {
+// InitProjectOpts controls optional behavior for InitProject.
+type InitProjectOpts struct {
+	// SkipRuntimeCheck skips local container runtime detection.
+	// Use this when initializing on a hub server where agents run on remote brokers.
+	SkipRuntimeCheck bool
+}
+
+func InitProject(targetDir string, harnesses []api.Harness, opts ...InitProjectOpts) error {
+	var opt InitProjectOpts
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
 	var projectDir string
 	var err error
 
@@ -355,9 +367,11 @@ func InitProject(targetDir string, harnesses []api.Harness) error {
 	// Check if any settings file exists (YAML or JSON)
 	settingsPath := GetSettingsPath(projectDir)
 	if settingsPath == "" {
-		// Validate that a functioning container runtime is available
-		if _, err := DetectLocalRuntime(); err != nil {
-			return err
+		if !opt.SkipRuntimeCheck {
+			// Validate that a functioning container runtime is available
+			if _, err := DetectLocalRuntime(); err != nil {
+				return err
+			}
 		}
 
 		// Seed grove-specific settings (no profiles/runtimes; those live in global settings)
