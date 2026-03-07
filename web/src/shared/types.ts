@@ -300,6 +300,9 @@ export interface Agent {
   currentModelCalls?: number;
   startedAt?: string;
   connectionState?: string;
+
+  // Cloud Logging capability (from hub)
+  cloudLogging?: boolean;
 }
 
 /**

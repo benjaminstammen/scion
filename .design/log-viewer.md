@@ -1,7 +1,7 @@
 # Agent Log Viewer
 
 ## Status
-**In Progress** — Phase 1 complete (2026-03-07)
+**In Progress** — Phase 2 complete (2026-03-07)
 
 ## Overview
 
@@ -474,16 +474,33 @@ known scion fields like `agent_id`, `grove_id`).
   from the logging package. When no GCP project is available, the service stays
   nil and endpoints return 501.
 
-#### Phase 2 — Web Logs Tab (Frontend)
-1. Add capability flag from hub indicating Cloud Logging availability
-2. Conditionally render "Logs" tab in `agent-detail.ts` (hidden when not configured)
-3. Implement log fetch and buffer management with lazy loading
-4. Build compact log row rendering
-5. Add refresh button and loading states
-6. Build `<scion-json-browser>` component
-7. Wire expanded row view
-8. Add stream toggle with SSE connection lifecycle
-9. Disable refresh button during streaming
+#### Phase 2 — Web Logs Tab (Frontend) ✅ Complete
+1. ✅ Add capability flag from hub indicating Cloud Logging availability
+2. ✅ Conditionally render "Logs" tab in `agent-detail.ts` (hidden when not configured)
+3. ✅ Implement log fetch and buffer management with lazy loading
+4. ✅ Build compact log row rendering
+5. ✅ Add refresh button and loading states
+6. ✅ Build `<scion-json-browser>` component
+7. ✅ Wire expanded row view
+8. ✅ Add stream toggle with SSE connection lifecycle
+9. ✅ Disable refresh button during streaming
+
+**Implementation notes:**
+- `AgentWithCapabilities` response includes `cloudLogging: true` when the hub's
+  `LogQueryService` is initialized, allowing the frontend to conditionally render
+  the Logs tab.
+- The `<scion-agent-log-viewer>` component handles all log viewing logic: fetch,
+  buffer management (Map keyed by insertId, capped at 2000), SSE streaming, and
+  lazy loading (triggered on first tab activation via `sl-tab-show` event).
+- The `<scion-json-browser>` component provides recursive expandable key-value
+  rendering with syntax coloring for primitive types. Built as a reusable Lit
+  component in `web/src/components/shared/json-browser.ts`.
+- Log rows show timestamp (HH:mm:ss.SSS), severity badge (color-coded), subsystem
+  (from jsonPayload.subsystem or labels.component), and message. Clicking a row
+  expands to show the full structured entry via the JSON browser.
+- SSE streaming connects directly to `/api/v1/agents/{id}/cloud-logs/stream`
+  using the browser's native `EventSource`. The stream toggle disables the
+  refresh button to prevent conflicting fetches.
 
 #### Phase 3 — Optimizations
 1. Upgrade streaming backend to Cloud Logging Tail API
@@ -530,3 +547,6 @@ Resolved from review feedback:
 | `web/src/client/api.ts` | API fetch wrapper |
 | `.design/hosted/agent-detail-layout.md` | Agent detail page design spec |
 | `.design/hosted/logging-components.md` | Logging architecture |
+| `web/src/components/shared/json-browser.ts` | Reusable JSON browser component |
+| `web/src/components/shared/agent-log-viewer.ts` | Cloud log viewer component |
+| `pkg/hub/response_types.go` | AgentWithCapabilities (cloudLogging flag) |

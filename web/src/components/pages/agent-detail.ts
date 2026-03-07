@@ -17,7 +17,7 @@
 /**
  * Agent detail page component
  *
- * Header + Two-Tab layout (Status / Configuration) as specified in
+ * Header + Tab layout (Status / Configuration / Logs) as specified in
  * .design/hosted/agent-detail-layout.md
  */
 
@@ -47,6 +47,8 @@ import type { StatusType } from '../shared/status-badge.js';
 import { apiFetch } from '../../client/api.js';
 import { stateManager } from '../../client/state.js';
 import '../shared/status-badge.js';
+import '../shared/agent-log-viewer.js';
+import type { ScionAgentLogViewer } from '../shared/agent-log-viewer.js';
 
 /**
  * Parse a Go-style duration string (e.g. "2h30m", "1h", "45m", "90s") into
@@ -704,6 +706,13 @@ export class ScionPageAgentDetail extends LitElement {
     }
   }
 
+  private handleTabShow(e: CustomEvent<{ name: string }>): void {
+    if (e.detail.name === 'logs') {
+      const viewer = this.shadowRoot?.querySelector('scion-agent-log-viewer') as ScionAgentLogViewer | null;
+      viewer?.loadLogs();
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -736,12 +745,22 @@ export class ScionPageAgentDetail extends LitElement {
           `
         : ''}
 
-      <sl-tab-group>
+      <sl-tab-group @sl-tab-show=${this.handleTabShow}>
         <sl-tab slot="nav" panel="status">Status</sl-tab>
         <sl-tab slot="nav" panel="configuration">Configuration</sl-tab>
+        ${this.agent.cloudLogging
+          ? html`<sl-tab slot="nav" panel="logs">Logs</sl-tab>`
+          : nothing}
 
         <sl-tab-panel name="status">${this.renderStatusTab()}</sl-tab-panel>
         <sl-tab-panel name="configuration">${this.renderConfigurationTab()}</sl-tab-panel>
+        ${this.agent.cloudLogging
+          ? html`
+              <sl-tab-panel name="logs">
+                <scion-agent-log-viewer agentId=${this.agentId}></scion-agent-log-viewer>
+              </sl-tab-panel>
+            `
+          : nothing}
       </sl-tab-group>
     `;
   }

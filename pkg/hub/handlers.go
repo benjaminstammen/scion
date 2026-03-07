@@ -1107,6 +1107,7 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request, id string) {
 		Agent:               *agent,
 		ResolvedHarness:     resolvedHarness,
 		HarnessCapabilities: &harnessCaps,
+		CloudLogging:        s.logQueryService != nil,
 	}
 	if identity := GetIdentityFromContext(ctx); identity != nil {
 		resp.Cap = s.authzService.ComputeCapabilities(ctx, identity, agentResource(agent))

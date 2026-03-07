@@ -25,6 +25,7 @@ type AgentWithCapabilities struct {
 	Cap                 *Capabilities                    `json:"_capabilities,omitempty"`
 	ResolvedHarness     string                           `json:"resolvedHarness,omitempty"`
 	HarnessCapabilities *api.HarnessAdvancedCapabilities `json:"harnessCapabilities,omitempty"`
+	CloudLogging        bool                             `json:"cloudLogging,omitempty"`
 }
 
 // GroveWithCapabilities wraps a store.Grove with capability annotations.
