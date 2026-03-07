@@ -263,25 +263,10 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	h := harness.New(harnessName)
 
 	// 3. Resolve credentials via new auth pipeline
-	// Inject environment-type resolved secrets into opts.Env before auth
-	// resolution so that hub-resolved credentials (from storage, secrets,
-	// or env-gather roundtrip) are visible to GatherAuthWithEnv.
-	for _, s := range opts.ResolvedSecrets {
-		if (s.Type == "environment" || s.Type == "") && s.Value != "" {
-			target := s.Target
-			if target == "" {
-				target = s.Name
-			}
-			if target != "" {
-				if opts.Env == nil {
-					opts.Env = make(map[string]string)
-				}
-				if _, exists := opts.Env[target]; !exists {
-					opts.Env[target] = s.Value
-				}
-			}
-		}
-	}
+	// Build a temporary auth overlay from resolved env-type secrets so auth
+	// resolution can detect credentials without mutating opts.Env (which is
+	// later projected into the container environment).
+	authEnvOverlay := buildAuthEnvOverlay(opts.Env, opts.ResolvedSecrets)
 
 	// Inject profile/harness-config env vars into opts.Env so that
 	// GatherAuthWithEnv can see credentials like GOOGLE_CLOUD_PROJECT
@@ -312,7 +297,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	var auth api.AuthConfig
 	var resolvedAuth *api.ResolvedAuth
 	if !opts.NoAuth {
-		auth = harness.GatherAuthWithEnv(opts.Env, !opts.BrokerMode)
+		auth = harness.GatherAuthWithEnv(authEnvOverlay, !opts.BrokerMode)
 		if opts.BrokerMode {
 			harness.OverlayFileSecrets(&auth, opts.ResolvedSecrets)
 		}
@@ -337,6 +322,8 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		if err != nil {
 			return nil, fmt.Errorf("auth resolution failed: %w", err)
 		}
+		// Keep a copy of the full resolved auth material for secret filtering.
+		resolvedForSecretFilter := *resolved
 		if opts.BrokerMode {
 			// File projection is handled by writeFileSecrets() from ResolvedSecrets
 			// at container launch, not by applyResolvedAuth from local paths.
@@ -354,6 +341,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 			util.Debugf("auth: applied harness-specific settings for %q", harnessName)
 		}
 		resolvedAuth = resolved
+		opts.ResolvedSecrets = filterResolvedSecretsForResolvedAuth(opts.ResolvedSecrets, &resolvedForSecretFilter)
 
 		// Persist the resolved auth method so it can be reported to the Hub.
 		// For auto-detected auth, opts.HarnessAuth may be empty; capture the
@@ -757,3 +745,129 @@ func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) ([]str
 	return agentEnv, warnings, missingKeys
 }
 
+// buildAuthEnvOverlay creates an auth-only view of the environment by layering
+// env-type resolved secrets over baseEnv without mutating baseEnv.
+func buildAuthEnvOverlay(baseEnv map[string]string, secrets []api.ResolvedSecret) map[string]string {
+	overlay := make(map[string]string, len(baseEnv))
+	for k, v := range baseEnv {
+		overlay[k] = v
+	}
+	for _, s := range secrets {
+		if (s.Type != "environment" && s.Type != "") || s.Value == "" {
+			continue
+		}
+		target := s.Target
+		if target == "" {
+			target = s.Name
+		}
+		if target == "" {
+			continue
+		}
+		if _, exists := overlay[target]; !exists {
+			overlay[target] = s.Value
+		}
+	}
+	return overlay
+}
+
+// filterResolvedSecretsForResolvedAuth drops auth-candidate secrets that are
+// not required by the selected resolved auth method while preserving all
+// non-auth secrets.
+func filterResolvedSecretsForResolvedAuth(secrets []api.ResolvedSecret, resolved *api.ResolvedAuth) []api.ResolvedSecret {
+	if len(secrets) == 0 || resolved == nil {
+		return secrets
+	}
+
+	requiredEnv := make(map[string]struct{}, len(resolved.EnvVars))
+	for k := range resolved.EnvVars {
+		requiredEnv[k] = struct{}{}
+	}
+
+	requiredFileKinds := make(map[string]struct{})
+	for _, f := range resolved.Files {
+		kind := authFileKind("", f.ContainerPath)
+		if kind != "" {
+			requiredFileKinds[kind] = struct{}{}
+		}
+	}
+
+	filtered := make([]api.ResolvedSecret, 0, len(secrets))
+	for _, s := range secrets {
+		if !isAuthCandidateSecret(s) {
+			filtered = append(filtered, s)
+			continue
+		}
+
+		keep := false
+		switch s.Type {
+		case "file":
+			if kind := authFileKind(s.Name, s.Target); kind != "" {
+				_, keep = requiredFileKinds[kind]
+			}
+		case "environment", "":
+			target := s.Target
+			if target == "" {
+				target = s.Name
+			}
+			_, keep = requiredEnv[target]
+		}
+
+		if keep {
+			filtered = append(filtered, s)
+		}
+	}
+
+	return filtered
+}
+
+func isAuthCandidateSecret(s api.ResolvedSecret) bool {
+	if (s.Type == "environment" || s.Type == "") && isAuthEnvKey(secretEnvTarget(s)) {
+		return true
+	}
+	if s.Type == "file" && authFileKind(s.Name, s.Target) != "" {
+		return true
+	}
+	return false
+}
+
+func secretEnvTarget(s api.ResolvedSecret) string {
+	if s.Target != "" {
+		return s.Target
+	}
+	return s.Name
+}
+
+func isAuthEnvKey(key string) bool {
+	switch key {
+	case "GEMINI_API_KEY",
+		"GOOGLE_API_KEY",
+		"ANTHROPIC_API_KEY",
+		"OPENAI_API_KEY",
+		"CODEX_API_KEY",
+		"GOOGLE_CLOUD_PROJECT",
+		"GCP_PROJECT",
+		"ANTHROPIC_VERTEX_PROJECT_ID",
+		"GOOGLE_CLOUD_REGION",
+		"CLOUD_ML_REGION",
+		"GOOGLE_CLOUD_LOCATION",
+		"GOOGLE_APPLICATION_CREDENTIALS":
+		return true
+	default:
+		return false
+	}
+}
+
+func authFileKind(name, target string) string {
+	switch {
+	case name == "GOOGLE_APPLICATION_CREDENTIALS" || strings.HasSuffix(target, "/application_default_credentials.json"):
+		return "adc"
+	case name == "GEMINI_OAUTH_CREDS" || strings.HasSuffix(target, "/oauth_creds.json"):
+		return "gemini-oauth"
+	case name == "CODEX_AUTH" || strings.HasSuffix(target, "/.codex/auth.json"):
+		return "codex-auth"
+	case name == "OPENCODE_AUTH" || strings.HasSuffix(target, "/opencode/auth.json"):
+		return "opencode-auth"
+	default:
+		return ""
+	}
+}

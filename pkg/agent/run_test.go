@@ -1528,103 +1528,74 @@ func TestBuildAgentEnv_HubEnvVarsSurviveMerge(t *testing.T) {
 	}
 }
 
-func TestBuildAgentEnv_ResolvedSecretsOverrideMissing(t *testing.T) {
-	// When a scionCfg declares a key with an empty value (e.g., GEMINI_API_KEY: "")
-	// and the key is provided by a resolved secret, buildAgentEnv should NOT
-	// report it as missing. This tests the injection that happens in Start()
-	// before calling buildAgentEnv.
-	scionCfg := &api.ScionConfig{
-		Env: map[string]string{
-			"GEMINI_API_KEY": "",
-			"OTHER_KEY":      "explicit",
+func TestBuildAuthEnvOverlay_DoesNotMutateBaseEnv(t *testing.T) {
+	baseEnv := map[string]string{
+		"EXISTING_KEY": "existing-value",
+		"API_KEY":      "explicit-value",
+	}
+	secrets := []api.ResolvedSecret{
+		{
+			Name:   "API_KEY",
+			Type:   "environment",
+			Target: "API_KEY",
+			Value:  "secret-value",
+			Source: "user",
+		},
+		{
+			Name:   "GEMINI_API_KEY",
+			Type:   "environment",
+			Target: "GEMINI_API_KEY",
+			Value:  "secret-api-key-value",
+			Source: "user",
 		},
 	}
 
-	// Simulate the resolved secrets injection from Start()
-	opts := api.StartOptions{
-		Env: make(map[string]string),
-		ResolvedSecrets: []api.ResolvedSecret{
-			{
-				Name:   "GEMINI_API_KEY",
-				Type:   "environment",
-				Target: "GEMINI_API_KEY",
-				Value:  "secret-api-key-value",
-				Source: "user",
-			},
-		},
-	}
+	overlay := buildAuthEnvOverlay(baseEnv, secrets)
 
-	// Apply the same logic as Start(): inject env-type secrets into opts.Env
-	for _, s := range opts.ResolvedSecrets {
-		if (s.Type == "environment" || s.Type == "") && s.Value != "" {
-			target := s.Target
-			if target == "" {
-				target = s.Name
-			}
-			if target != "" {
-				if _, exists := opts.Env[target]; !exists {
-					opts.Env[target] = s.Value
-				}
-			}
-		}
+	if baseEnv["API_KEY"] != "explicit-value" {
+		t.Errorf("base env mutated: API_KEY = %q, want %q", baseEnv["API_KEY"], "explicit-value")
 	}
-
-	env, _, missingKeys := buildAgentEnv(scionCfg, opts.Env)
-
-	if len(missingKeys) != 0 {
-		t.Errorf("expected 0 missing keys, got %d: %v", len(missingKeys), missingKeys)
+	if _, ok := baseEnv["GEMINI_API_KEY"]; ok {
+		t.Error("base env mutated: unexpected GEMINI_API_KEY entry")
 	}
-
-	envMap := make(map[string]string)
-	for _, e := range env {
-		parts := strings.SplitN(e, "=", 2)
-		if len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
-		}
+	if overlay["API_KEY"] != "explicit-value" {
+		t.Errorf("overlay API_KEY = %q, want %q", overlay["API_KEY"], "explicit-value")
 	}
-
-	if envMap["GEMINI_API_KEY"] != "secret-api-key-value" {
-		t.Errorf("GEMINI_API_KEY = %q, want %q", envMap["GEMINI_API_KEY"], "secret-api-key-value")
-	}
-	if envMap["OTHER_KEY"] != "explicit" {
-		t.Errorf("OTHER_KEY = %q, want %q", envMap["OTHER_KEY"], "explicit")
+	if overlay["GEMINI_API_KEY"] != "secret-api-key-value" {
+		t.Errorf("overlay GEMINI_API_KEY = %q, want %q", overlay["GEMINI_API_KEY"], "secret-api-key-value")
 	}
 }
 
-func TestBuildAgentEnv_ResolvedSecretsDoNotOverrideExplicit(t *testing.T) {
-	// When opts.Env already has a value for a key, resolved secrets should
-	// NOT override it (explicit config takes precedence over secrets).
-	opts := api.StartOptions{
-		Env: map[string]string{
-			"API_KEY": "explicit-value",
-		},
-		ResolvedSecrets: []api.ResolvedSecret{
-			{
-				Name:   "API_KEY",
-				Type:   "environment",
-				Target: "API_KEY",
-				Value:  "secret-value",
-				Source: "user",
-			},
+func TestFilterResolvedSecretsForResolvedAuth(t *testing.T) {
+	secrets := []api.ResolvedSecret{
+		{Name: "GEMINI_API_KEY", Type: "environment", Target: "GEMINI_API_KEY", Value: "gemini"},
+		{Name: "GOOGLE_APPLICATION_CREDENTIALS", Type: "file", Target: "/home/scion/.config/gcloud/application_default_credentials.json", Value: "adc"},
+		{Name: "NOT_AUTH_SECRET", Type: "environment", Target: "NOT_AUTH_SECRET", Value: "keep"},
+	}
+	resolved := &api.ResolvedAuth{
+		Method: "api-key",
+		EnvVars: map[string]string{
+			"GEMINI_API_KEY": "gemini",
 		},
 	}
 
-	for _, s := range opts.ResolvedSecrets {
-		if (s.Type == "environment" || s.Type == "") && s.Value != "" {
-			target := s.Target
-			if target == "" {
-				target = s.Name
-			}
-			if target != "" {
-				if _, exists := opts.Env[target]; !exists {
-					opts.Env[target] = s.Value
-				}
-			}
-		}
+	filtered := filterResolvedSecretsForResolvedAuth(secrets, resolved)
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 secrets after filtering, got %d", len(filtered))
 	}
 
-	if opts.Env["API_KEY"] != "explicit-value" {
-		t.Errorf("API_KEY = %q, want %q (explicit should take precedence)", opts.Env["API_KEY"], "explicit-value")
+	got := make(map[string]struct{}, len(filtered))
+	for _, s := range filtered {
+		got[s.Name] = struct{}{}
+	}
+	if _, ok := got["GEMINI_API_KEY"]; !ok {
+		t.Error("expected GEMINI_API_KEY to be kept")
+	}
+	if _, ok := got["NOT_AUTH_SECRET"]; !ok {
+		t.Error("expected NOT_AUTH_SECRET to be kept")
+	}
+	if _, ok := got["GOOGLE_APPLICATION_CREDENTIALS"]; ok {
+		t.Error("expected GOOGLE_APPLICATION_CREDENTIALS to be dropped for api-key auth")
 	}
 }
 
