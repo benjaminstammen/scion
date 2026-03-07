@@ -53,7 +53,7 @@ The header provides the 3-4 most critical pieces of information plus actions.
 |                                                                       |
 |  [code-square] {template}   [folder] {grove}   [hdd-rack] {broker}   |
 |                                                                       |
-|                                          [Start/Stop] [Configure] [x] |
+|                              [Terminal] [Start/Stop] [Configure] [x] |
 +-----------------------------------------------------------------------+
 ```
 
@@ -63,7 +63,7 @@ The header provides the 3-4 most critical pieces of information plus actions.
 - **Template badge** — template name with icon
 - **Grove link** — clickable link to grove detail
 - **Runtime Broker link** — clickable link to broker detail
-- **Action buttons** — Start/Stop, Configure (if phase=created), Delete (capability-gated)
+- **Action buttons** — Open Terminal, Start/Stop, Configure (if phase=created), Delete (capability-gated)
 
 **Error banner** — Rendered below header, above tabs, when `phase === 'error'` (unchanged behavior).
 
@@ -200,8 +200,8 @@ Everything on this tab is static — values set at agent creation time that do n
 |  Runtime Broker        Runtime Type           Image                     |
 |  {broker name, link}   {docker/k8s/apple}     {image name, mono}       |
 |                                                                         |
-|  Branch                Detached                                         |
-|  {branch name}         {yes/no}                                         |
+|  Branch                                                                 |
+|  {branch name}                                                          |
 |                                                                         |
 +-------------------------------------------------------------------------+
 
@@ -248,8 +248,6 @@ Everything on this tab is static — values set at agent creation time that do n
 | Runtime Type | `agent.runtime` | docker/kubernetes/apple. **New on frontend.** |
 | Image | `agent.image` | Monospace. **New on frontend.** |
 | Branch | `agent.appliedConfig.inlineConfig.branch` | Git branch. **New on frontend.** |
-| Detached | `agent.detached` | Boolean display. **New on frontend.** |
-
 **Limits** (card, info-grid, conditional)
 | Field | Source | Notes |
 |---|---|---|
@@ -268,11 +266,7 @@ Hidden if all three are unset/zero.
 
 ## Quick Actions
 
-The quick actions bar (Terminal, Logs, Settings) moves to a position **inside the Status tab**, above the Current State card. These are all runtime actions relevant to a running agent.
-
-Alternatively, Terminal can remain as a header-level action button alongside Start/Stop since it's the most frequently used action. The disabled "View Logs" and "Settings" placeholders can be removed until they are functional.
-
-**Recommendation:** Remove the quick-action cards entirely. Keep "Open Terminal" as a header action button (next to Start/Stop). Drop the disabled placeholder buttons.
+**Decision:** Remove the quick-action cards entirely. "Open Terminal" is promoted to a header action button (next to Start/Stop) since it's the most frequently used action. The disabled "View Logs" and "Settings" placeholder buttons are dropped until they are functional.
 
 ---
 
@@ -288,7 +282,6 @@ interface Agent {
   slug?: string;
   image?: string;
   runtime?: string;
-  detached?: boolean;
   visibility?: string;
   createdBy?: string;
   appliedConfig?: AgentAppliedConfig;
@@ -357,7 +350,6 @@ Fields already on `store.Agent` that need to be mapped into the API response / f
 - `slug` — already on store.Agent
 - `image` — already on store.Agent
 - `runtime` — already on store.Agent
-- `detached` — already on store.Agent
 - `visibility` — already on store.Agent
 - `createdBy` — already on store.Agent
 - `connectionState` — already on store.Agent
