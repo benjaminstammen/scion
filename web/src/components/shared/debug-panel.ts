@@ -151,6 +151,7 @@ export class ScionDebugPanel extends LitElement {
     .dot.green { background: #22c55e; }
     .dot.yellow { background: #f59e0b; }
     .dot.red { background: #ef4444; }
+    .dot.gray { background: #64748b; }
 
     /* Panel - full height right side */
     .panel {
@@ -307,6 +308,7 @@ export class ScionDebugPanel extends LitElement {
     .status-dot.connected { background: #22c55e; }
     .status-dot.reconnecting { background: #f59e0b; animation: pulse 1s infinite; }
     .status-dot.disconnected { background: #ef4444; }
+    .status-dot.idle { background: #64748b; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -526,10 +528,12 @@ export class ScionDebugPanel extends LitElement {
     }
   }
 
-  private getConnectionStatus(): 'connected' | 'reconnecting' | 'disconnected' {
+  private getConnectionStatus(): 'connected' | 'reconnecting' | 'disconnected' | 'idle' {
     if (stateManager.isConnected) return 'connected';
     const sse = stateManager.sseClientInstance;
     if (sse.reconnectAttemptCount > 0) return 'reconnecting';
+    // No subjects means no connection was attempted — distinct from a failed connection
+    if (sse.currentSubjects.length === 0) return 'idle';
     return 'disconnected';
   }
 
@@ -539,6 +543,7 @@ export class ScionDebugPanel extends LitElement {
     if (status === 'reconnecting') {
       return `Reconnecting (attempt ${stateManager.sseClientInstance.reconnectAttemptCount})`;
     }
+    if (status === 'idle') return 'Idle (no scope)';
     return 'Disconnected';
   }
 
@@ -594,7 +599,7 @@ export class ScionDebugPanel extends LitElement {
     }
 
     const connStatus = this.getConnectionStatus();
-    const dotClass = connStatus === 'connected' ? 'green' : connStatus === 'reconnecting' ? 'yellow' : 'red';
+    const dotClass = connStatus === 'connected' ? 'green' : connStatus === 'reconnecting' ? 'yellow' : connStatus === 'idle' ? 'gray' : 'red';
 
     return html`
       <button class="toggle-button" @click=${() => this.togglePanel()}>
@@ -625,13 +630,18 @@ export class ScionDebugPanel extends LitElement {
   private renderConnectionStatus() {
     const status = this.getConnectionStatus();
     const sse = stateManager.sseClientInstance;
+    const subjects = sse.currentSubjects;
 
     return html`
       <div class="section">
-        <div class="section-title">Connection Status</div>
+        <div class="section-title">SSE Connection</div>
         <div class="status-row">
           <div class="status-dot ${status}"></div>
           <span>${this.getConnectionStatusLabel()}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Endpoint</span>
+          <span class="info-value">/events</span>
         </div>
         ${debugLog.connectionId ? html`
           <div class="info-row">
@@ -639,10 +649,18 @@ export class ScionDebugPanel extends LitElement {
             <span class="info-value">${debugLog.connectionId}</span>
           </div>
         ` : nothing}
-        <div class="info-row">
-          <span class="info-label">Reconnect Attempts</span>
-          <span class="info-value">${sse.reconnectAttemptCount}</span>
-        </div>
+        ${status !== 'idle' ? html`
+          <div class="info-row">
+            <span class="info-label">Reconnect Attempts</span>
+            <span class="info-value">${sse.reconnectAttemptCount}</span>
+          </div>
+        ` : nothing}
+        ${subjects.length > 0 ? html`
+          <div class="info-row">
+            <span class="info-label">Subjects</span>
+            <span class="info-value">${subjects.length}</span>
+          </div>
+        ` : nothing}
       </div>
     `;
   }
