@@ -30,7 +30,7 @@ export default defineConfig({
 			],
 			sidebar: [
 				{
-					label: 'Foundations',
+					label: 'Introduction & Foundations',
 					items: [
 						{ label: 'Overview', slug: 'overview' },
 						{ label: 'Core Concepts', slug: 'concepts' },
@@ -40,49 +40,45 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Developer Guide',
+					label: 'Getting Started',
 					items: [
-						{
-							label: 'Local Workflow',
-							items: [
-								{ label: 'Installation', slug: 'install' },
-								{ label: 'Workspace Management', slug: 'guides/workspace' },
-								{ label: 'Local Configuration', slug: 'guides/local-governance' },
-							],
-						},
-						{
-							label: 'Team Workflow',
-							items: [
-								{ label: 'Connecting to Hub', slug: 'guides/hosted-user' },
-								{ label: 'Web Dashboard', slug: 'guides/dashboard' },
-								{ label: 'Secret Management', slug: 'guides/secrets' },
-							],
-						},
-						{
-							label: 'How To',
-							items: [
-								{ label: 'Templates & Harnesses', slug: 'guides/templates' },
-								{ label: 'Custom Images', slug: 'guides/custom-images' },
-								{ label: 'Agent Credentials', slug: 'guides/agent-credentials' },
-								{ label: 'Tmux Sessions', slug: 'guides/tmux' },
-							],
-						},
+						{ label: 'Quickstart', slug: 'getting-started/install' },
+						{ label: 'Workspace Basics', slug: 'getting-started/workspace' },
+						{ label: 'Tmux Sessions', slug: 'getting-started/tmux' },
 					],
 				},
 				{
-					label: 'Operations & Hosting',
+					label: 'Advanced Local Usage',
 					items: [
-						{ label: 'Hub Setup', slug: 'guides/hub-server' },
-						{ label: 'Runtime Broker', slug: 'guides/runtime-broker' },
-						{ label: 'Kubernetes', slug: 'guides/kubernetes' },
-						{ label: 'Security', slug: 'guides/auth' },
-						{ label: 'Permissions', slug: 'guides/permissions' },
-						{ label: 'Observability', slug: 'guides/observability' },
-						{ label: 'Metrics', slug: 'guides/metrics' },
+						{ label: 'Local Configuration', slug: 'advanced-local/local-governance' },
+						{ label: 'Templates & Roles', slug: 'advanced-local/templates' },
+						{ label: 'Custom Images', slug: 'advanced-local/custom-images' },
+						{ label: 'Agent Credentials', slug: 'advanced-local/agent-credentials' },
+						{ label: 'Workstation Server', slug: 'advanced-local/workstation-server' },
 					],
 				},
 				{
-					label: 'Reference',
+					label: 'Hub User Guide',
+					items: [
+						{ label: 'Connecting to Hub', slug: 'hub-user/hosted-user' },
+						{ label: 'Web Dashboard', slug: 'hub-user/dashboard' },
+						{ label: 'Secret Management', slug: 'hub-user/secrets' },
+					],
+				},
+				{
+					label: 'Hub Administration',
+					items: [
+						{ label: 'Hub Setup', slug: 'hub-admin/hub-server' },
+						{ label: 'Runtime Broker', slug: 'hub-admin/runtime-broker' },
+						{ label: 'Kubernetes', slug: 'hub-admin/kubernetes' },
+						{ label: 'Security', slug: 'hub-admin/auth' },
+						{ label: 'Permissions', slug: 'hub-admin/permissions' },
+						{ label: 'Observability', slug: 'hub-admin/observability' },
+						{ label: 'Metrics', slug: 'hub-admin/metrics' },
+					],
+				},
+				{
+					label: 'Technical Reference',
 					autogenerate: { directory: 'reference' },
 				},
 				{

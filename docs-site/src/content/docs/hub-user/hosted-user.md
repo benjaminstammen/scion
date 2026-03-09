@@ -3,6 +3,9 @@ title: Team Workflow
 description: Connecting to a Scion Hub for team collaboration.
 ---
 
+**Target Persona**: Team Developer (Hub User)
+**What you will learn**: How to connect your local CLI to your organization's Scion Hub, dispatch agents remotely, use the Web Dashboard, and collaborate with your team.
+
 Scion's "Hosted" mode allows teams to share state, infrastructure, and agent configurations by connecting to a central Scion Hub.
 
 ## Connecting to a Hub
@@ -74,7 +77,7 @@ scion hub secret set --grove OPENAI_API_KEY=sk-...
 
 Secrets are encrypted and never returned via the API; they are securely injected into agents at runtime by the Runtime Broker.
 
-See the [Secret & Environment Management guide](/guides/secrets) for details on scoping and projection modes.
+See the [Secret & Environment Management guide](/hub-user/secrets) for details on scoping and projection modes.
 
 ## Git-Based Groves
 

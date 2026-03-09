@@ -119,4 +119,4 @@ For a deep dive into the security protocols, see the [Runtime Broker Security](/
 
 The Runtime Broker supports structured logging and can forward its internal logs and traces to an OpenTelemetry-compatible backend. This allows administrators to monitor the health of the broker and correlate its actions with agent operations.
 
-To enable log forwarding, set `SCION_OTEL_LOG_ENABLED=true` and `SCION_OTEL_ENDPOINT`. See the [Observability Guide](/guides/observability) for setup instructions.
+To enable log forwarding, set `SCION_OTEL_LOG_ENABLED=true` and `SCION_OTEL_ENDPOINT`. See the [Observability Guide](/hub-admin/observability) for setup instructions.

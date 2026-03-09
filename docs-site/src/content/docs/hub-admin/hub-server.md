@@ -3,6 +3,9 @@ title: Setting up the Scion Hub
 description: Installation and configuration of the Scion Hub (State Server).
 ---
 
+**Target Persona**: Platform Ops (Hub Administration)
+**What you will learn**: How to deploy, secure, and operate the Scion Hub infrastructure, including setting up persistence, configuring runtime brokers, and managing user access.
+
 The **Scion Hub** is the central brain of a hosted Scion architecture. It maintains the state of all agents, groves, and runtime brokers, and provides the API used by the CLI and Web Dashboard.
 
 ## Core Responsibilities
@@ -60,7 +63,7 @@ The Hub supports multiple authentication modes to balance ease of development wi
 
 ### OAuth 2.0 (Production)
 Scion supports Google and GitHub as identity providers. Configuration requires creating OAuth Apps in the respective provider consoles.
-See the [Authentication Guide](/guides/auth) for detailed setup instructions.
+See the [Authentication Guide](/hub-admin/auth) for detailed setup instructions.
 
 ### Dev Auth (Local Development)
 For local testing, the Hub can auto-generate a development token:
@@ -133,7 +136,7 @@ The Hub is designed to be stateless and is highly compatible with Google Cloud R
 
 The Hub supports structured logging and can forward its internal logs and traces to an OpenTelemetry-compatible backend (like Google Cloud Logging/Trace).
 
-To enable log forwarding, set `SCION_OTEL_LOG_ENABLED=true` and `SCION_OTEL_ENDPOINT`. See the [Observability Guide](/guides/observability) for full details on centralizing system logs and agent metrics.
+To enable log forwarding, set `SCION_OTEL_LOG_ENABLED=true` and `SCION_OTEL_ENDPOINT`. See the [Observability Guide](/hub-admin/observability) for full details on centralizing system logs and agent metrics.
 
 ## Monitoring
 

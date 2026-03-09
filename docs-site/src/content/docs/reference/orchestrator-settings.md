@@ -34,7 +34,7 @@ Files without `schema_version` are treated as legacy format. Run `scion config m
 | `schema_version` | string | **Required**. Must be `"1"`. |
 | `active_profile` | string | The name of the profile to use by default (e.g., `local`, `remote`). |
 | `default_template` | string | The default template to use when creating agents (e.g., `gemini`, `claude`). |
-| `image_registry` | string | Registry prefix for all standard harness images. Rewrites the registry portion of `scion-*` images (e.g., `ghcr.io/myorg`). See [Building Custom Images](/guides/custom-images/). |
+| `image_registry` | string | Registry prefix for all standard harness images. Rewrites the registry portion of `scion-*` images (e.g., `ghcr.io/myorg`). See [Building Custom Images](/advanced-local/custom-images/). |
 
 ## CLI Configuration (`cli`)
 
@@ -193,7 +193,7 @@ profiles:
 
 Controls agent telemetry collection, forwarding, privacy filtering, and debug output. Telemetry settings can be defined at global or grove scope and are merged across the hierarchy (last write wins). They can also be overridden per-template or per-agent in `scion-agent.yaml`.
 
-See the [Metrics & OpenTelemetry guide](/guides/metrics/) for operational details.
+See the [Metrics & OpenTelemetry guide](/hub-admin/metrics/) for operational details.
 
 ### Basic Example
 
@@ -297,4 +297,4 @@ Settings can be overridden using environment variables with the `SCION_` prefix.
 | `telemetry.hub.enabled` | `SCION_TELEMETRY_HUB_ENABLED` |
 | `telemetry.local.enabled` | `SCION_TELEMETRY_DEBUG` |
 
-See [Local Governance](/guides/local-governance/) for more on variable substitution.
+See [Local Governance](/advanced-local/local-governance/) for more on variable substitution.

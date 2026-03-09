@@ -2,6 +2,9 @@
 title: Installation Guide
 ---
 
+**Target Persona**: Casual Local User
+**What you will learn**: How to get Scion running on your machine from scratch with zero configuration, allowing you to start your first agent immediately.
+
 This guide covers the steps to install and configure Scion on your local machine.
 
 ## Prerequisites

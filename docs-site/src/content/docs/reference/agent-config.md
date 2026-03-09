@@ -132,7 +132,7 @@ telemetry:
     service.name: "my-specialized-agent"
 ```
 
-See the [Orchestrator Settings Reference](/reference/orchestrator-settings/#telemetry-configuration-telemetry) for the full field reference and the [Metrics guide](/guides/metrics/#configuration-hierarchy) for how telemetry settings merge across scopes.
+See the [Orchestrator Settings Reference](/reference/orchestrator-settings/#telemetry-configuration-telemetry) for the full field reference and the [Metrics guide](/hub-admin/metrics/#configuration-hierarchy) for how telemetry settings merge across scopes.
 
 ### Kubernetes Specifics (`kubernetes`)
 
