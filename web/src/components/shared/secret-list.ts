@@ -170,8 +170,8 @@ export class ScionSecretList extends LitElement {
     }
   }
 
-  private async handleDelete(secret: Secret): Promise<void> {
-    if (!confirm(`Delete secret "${secret.key}"? This cannot be undone.`)) {
+  private async handleDelete(secret: Secret, event?: MouseEvent): Promise<void> {
+    if (!event?.altKey && !confirm(`Delete secret "${secret.key}"? This cannot be undone.`)) {
       return;
     }
 
@@ -366,7 +366,7 @@ export class ScionSecretList extends LitElement {
             name="trash"
             label="Delete"
             ?disabled=${isDeleting}
-            @click=${() => this.handleDelete(secret)}
+            @click=${(e: MouseEvent) => this.handleDelete(secret, e)}
           ></sl-icon-button>
         </td>
       </tr>

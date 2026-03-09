@@ -168,8 +168,8 @@ export class ScionEnvVarList extends LitElement {
     }
   }
 
-  private async handleDelete(envVar: EnvVar): Promise<void> {
-    if (!confirm(`Delete environment variable "${envVar.key}"? This cannot be undone.`)) {
+  private async handleDelete(envVar: EnvVar, event?: MouseEvent): Promise<void> {
+    if (!event?.altKey && !confirm(`Delete environment variable "${envVar.key}"? This cannot be undone.`)) {
       return;
     }
 
@@ -371,7 +371,7 @@ export class ScionEnvVarList extends LitElement {
             name="trash"
             label="Delete"
             ?disabled=${isDeleting}
-            @click=${() => this.handleDelete(envVar)}
+            @click=${(e: MouseEvent) => this.handleDelete(envVar, e)}
           ></sl-icon-button>
         </td>
       </tr>

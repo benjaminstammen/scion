@@ -252,13 +252,13 @@ export class ScionPageGroveSettings extends LitElement {
     }
   }
 
-  private async handleDeleteGrove(): Promise<void> {
+  private async handleDeleteGrove(event?: MouseEvent): Promise<void> {
     const groveName = this.grove?.name || this.groveId;
     const agentWarning = this.deleteAlsoAgents
       ? '\n\nThis will also delete all agents in this grove.'
       : '';
 
-    if (!confirm(`Are you sure you want to delete "${groveName}"?${agentWarning}\n\nThis action cannot be undone.`)) {
+    if (!event?.altKey && !confirm(`Are you sure you want to delete "${groveName}"?${agentWarning}\n\nThis action cannot be undone.`)) {
       return;
     }
 
@@ -351,7 +351,7 @@ export class ScionPageGroveSettings extends LitElement {
                 size="small"
                 ?loading=${this.deleteLoading}
                 ?disabled=${this.deleteLoading}
-                @click=${() => this.handleDeleteGrove()}
+                @click=${(e: MouseEvent) => this.handleDeleteGrove(e)}
               >
                 <sl-icon slot="prefix" name="trash"></sl-icon>
                 Delete Grove

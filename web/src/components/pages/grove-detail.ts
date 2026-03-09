@@ -846,8 +846,8 @@ export class ScionPageGroveDetail extends LitElement {
     }
   }
 
-  private async handleFileDelete(filePath: string): Promise<void> {
-    if (!confirm(`Delete ${filePath}?`)) return;
+  private async handleFileDelete(filePath: string, event?: MouseEvent): Promise<void> {
+    if (!event?.altKey && !confirm(`Delete ${filePath}?`)) return;
 
     try {
       // Encode each path segment individually (preserve /)
@@ -900,10 +900,11 @@ export class ScionPageGroveDetail extends LitElement {
 
   private async handleAgentAction(
     agentId: string,
-    action: 'start' | 'stop' | 'delete'
+    action: 'start' | 'stop' | 'delete',
+    event?: MouseEvent
   ): Promise<void> {
     if (action === 'delete') {
-      if (!confirm('Are you sure you want to delete this agent?')) {
+      if (!event?.altKey && !confirm('Are you sure you want to delete this agent?')) {
         return;
       }
       this.actionLoading = { ...this.actionLoading, [agentId]: true };
@@ -1252,7 +1253,7 @@ export class ScionPageGroveDetail extends LitElement {
                                   <sl-icon-button
                                     name="trash"
                                     label="Delete ${file.path}"
-                                    @click=${() => this.handleFileDelete(file.path)}
+                                    @click=${(e: MouseEvent) => this.handleFileDelete(file.path, e)}
                                   ></sl-icon-button>
                                 `
                               : nothing}
@@ -1414,7 +1415,7 @@ export class ScionPageGroveDetail extends LitElement {
                 outline
                 ?loading=${isLoading}
                 ?disabled=${isLoading}
-                @click=${() => this.handleAgentAction(agent.id, 'delete')}
+                @click=${(e: MouseEvent) => this.handleAgentAction(agent.id, 'delete', e)}
               >
                 <sl-icon slot="prefix" name="trash"></sl-icon>
               </sl-button>
@@ -1512,7 +1513,7 @@ export class ScionPageGroveDetail extends LitElement {
                   outline
                   ?loading=${isLoading}
                   ?disabled=${isLoading}
-                  @click=${() => this.handleAgentAction(agent.id, 'delete')}
+                  @click=${(e: MouseEvent) => this.handleAgentAction(agent.id, 'delete', e)}
                 >
                   <sl-icon slot="prefix" name="trash"></sl-icon>
                 </sl-button>
