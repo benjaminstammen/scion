@@ -36,6 +36,15 @@ Previous versions of Scion used `scion-agent.json`. The new versioned settings s
 The `harness` field is no longer supported in `scion-agent.yaml`. Templates must be harness-agnostic. Use `default_harness_config` to specify a preferred harness, which can be overridden by users at runtime.
 :::
 
+### Automatic Instruction Extensions
+
+Scion automatically appends contextual instructions to the base `agent_instructions` during provisioning:
+
+- **`agents-git.md`**: Appended if the agent is running in a Git-backed workspace. Provides operational context for git worktree and branch management.
+- **`agents-hub.md`**: Appended if the agent is connected to a Scion Hub. Provides instructions for status reporting and Hub API interaction.
+
+These extensions are managed by Scion and do not need to be manually included in your template definition.
+
 ### Limits & Resources
 
 | Field | Type | Description |

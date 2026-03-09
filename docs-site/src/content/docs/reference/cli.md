@@ -78,6 +78,7 @@ Sends a message to a running agent's harness by enqueuing it into its input stre
     - `-i, --interrupt`: Interrupt the harness before sending the message.
     - `-b, --broadcast`: Send the message to all running agents in the current grove.
     - `-a, --all`: Send the message to all running agents across all groves.
+    - `--notify`: Get notified when the target agent(s) respond or reach a terminal state after receiving the message.
 
 ### `scion logs`
 
@@ -124,9 +125,15 @@ Synchronizes the agent workspace between the host and the container.
 Manages the Scion workspace (Grove).
 
 - `scion grove init`: Initialize a new grove. By default, creates a `.scion` directory in the current directory or the root of the current git repository.
-    - Flags: `--global` (Initialize the global grove in the home directory)
+    - Flags:
+        - `--global`: Initialize the global grove in the home directory.
+        - `--machine`: Perform full machine-level setup (seeds harness-configs, templates, settings).
+        - `--image-registry <string>`: Configure the container image registry path (e.g., `ghcr.io/myorg`).
     - **Note:** If you are in a git repository, add `.scion/agents` to your `.gitignore` to avoid issues with nested git worktrees: `echo ".scion/agents" >> .gitignore`
     - **Hub Integration:** If a Hub endpoint is configured, `init` will prompt to register the new grove with the Hub.
+- `scion grove list` (alias `ls`): List all groves known to Scion on this machine, including their type, agent count, status, and workspace path.
+- `scion grove prune`: Detect and remove grove configurations whose workspace directories no longer exist. This stops any running containers associated with orphaned groves before cleaning up.
+- `scion grove reconnect <new-workspace-path>`: Reconnect a moved workspace to its externalized grove configuration. This fixes groves that show as "orphaned" after being relocated.
 
 ### `scion clean`
 

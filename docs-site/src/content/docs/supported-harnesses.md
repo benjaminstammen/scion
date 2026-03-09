@@ -72,15 +72,15 @@ A harness for the OpenAI Codex CLI.
 
 ### Authentication
 Codex supports two authentication methods (auto-detected in this order):
-- **API Key** (`api-key`): Set `CODEX_API_KEY` or `OPENAI_API_KEY` in your environment (Codex-specific key preferred).
+- **API Key** (`api-key`): Set `CODEX_API_KEY` or `OPENAI_API_KEY` in your environment (Codex-specific key preferred). Scion automatically generates a proper `auth.json` in the agent home for API key workflows.
 - **Auth File** (`auth-file`): Uses `~/.codex/auth.json` if available. Scion copies this file from your host when the agent is created.
 
 ### Configuration
 - **Config File**: `~/.codex/config.toml`.
-- **Default Flags**: Runs with `--full-auto` approval mode enabled by default.
+- **Default Flags**: Runs with `--full-auto` approval mode enabled by default with unified flag formatting.
 - **Resume Support**: Automatically uses the `resume` positional argument to continue existing sessions.
 - **Notify Bridge**: Scion configures `notify = "sh ~/.codex/scion_notify.sh"` so Codex notify payloads can drive Scion state updates.
-- **OpenTelemetry**: When telemetry is enabled, Scion reconciles Codex `[otel]` settings at start to export via OTLP (default `localhost:4317`, with explicit overrides honored).
+- **OpenTelemetry**: When telemetry is enabled, Scion performs telemetry reconciliation at start to ensure consistent OTLP export (default `localhost:4317`).
 
 ### Known Limitations
 - **Auth File Copy**: The `auth.json` file is only copied when the agent is **created**.

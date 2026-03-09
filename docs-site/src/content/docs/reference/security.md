@@ -131,8 +131,9 @@ Scion ensures that sensitive credentials (GCP Service Accounts, API keys for LLM
 - **Docker / Podman**: Injected via environment variables or read-only bind mounts for file-type secrets. File secrets are written to a temporary directory and mounted into the container at the target path.
 - **Kubernetes**: Propagated via Kubernetes Secrets or Secret Manager CSI drivers (e.g., GCP Secret Manager).
 - **Broker Mode Isolation**: When agents are dispatched via the Hub, the credential pipeline only uses hub-resolved secrets and environment variables. The broker operator's host environment and filesystem are never scanned, preventing credential leakage into hub-dispatched agents.
-- **Isolation**: Agent home directories are isolated on the host filesystem to prevent cross-agent credential leakage.
-- **Lifecycle**: Secrets exist only in the agent container's memory. When an agent is deleted, all projected secrets are purged.
+- **Isolation**: Agent home directories and non-git grove data are isolated on the host filesystem and externalized from the workspace to prevent cross-agent data leakage and unauthorized traversal.
+- **Shadow Mounts**: Scion uses `tmpfs` shadow mounts to definitively block agents from accessing `.scion` configuration data or other agents' workspaces within the same grove.
+- **Lifecycle**: Secrets exist only in the agent container's memory or transient mounts. When an agent is deleted, all projected secrets and transient volumes are purged.
 
 ### 4.6 Hub-Internal Keys
 

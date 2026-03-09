@@ -43,7 +43,7 @@ The **Runtime** is the infrastructure layer responsible for executing the agent 
 - **Docker**: The standard runtime for Linux and macOS.
 - **Podman**: A daemonless, rootless alternative to Docker for Linux and macOS.
 - **Apple Container**: Uses the native Virtualization Framework on macOS for improved performance.
-- **Kubernetes**: (Experimental) Allows running agents as Pods in a Kubernetes cluster, enabling remote execution and scaling.
+- **Kubernetes**: Allows running agents as Pods in a Kubernetes cluster, enabling remote execution and scaling at production scale.
 
 ### Runtime Broker
 A **Runtime Broker** is a compute node (e.g., a server, laptop, or K8s cluster) that registers with a **Scion Hub** to provide execution capacity.
@@ -81,7 +81,15 @@ To enable multiple agents to work on the same codebase simultaneously without co
 - This ensures that agents operate on the same repository history but have independent working directories.
 
 ### Resource Isolation
-Scion enforces strict isolation between agents to prevent interference.
-- **Filesystem**: Each agent has a dedicated home directory (host path mounted to container) containing its unique `settings.json` and history.
+Scion enforces strict isolation between agents to prevent interference and cross-contamination of credentials or data.
+- **Filesystem**: Each agent has a dedicated home directory (host path mounted to container) containing its unique history and configuration.
+- **Shadow Mounts (tmpfs)**: Scion uses `tmpfs` shadow mounts to definitively prevent agents from accessing `.scion` configuration data or other agents' workspaces within the same grove.
 - **Environment**: Environment variables are explicitly projected into the container.
 - **Credentials**: Sensitive credentials (like `gcloud` auth) are mounted read-only or injected via environment variables, ensuring they are available only to the specific agent.
+- **Externalized Grove Data**: Non-git grove data and agent home directories are externalized to ensure they cannot be traversed by agents in the workspace.
+
+### Contextual Agent Instructions
+Scion automatically tailors an agent's operational context by appending supplemental instructions based on the workspace environment.
+- **`agents-git.md`**: Appended when an agent is running in a Git-backed workspace, providing context on worktree management and branch workflows.
+- **`agents-hub.md`**: Appended when an agent is connected to a Scion Hub, providing instructions for interacting with the Hub API and reporting status.
+These extensions ensure agents understand their specific execution environment without requiring manual configuration in every template.
