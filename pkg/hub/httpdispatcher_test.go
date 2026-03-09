@@ -2710,3 +2710,63 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_IncludesInlineConfig(t *testing.
 		t.Errorf("expected MaxDuration='30m', got '%s'", mockClient.lastInlineConfig.MaxDuration)
 	}
 }
+
+func TestDispatchAgentStart_IncludesHubEndpoint(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	broker := &store.RuntimeBroker{
+		ID:       "host-1",
+		Name:     "test-host",
+		Slug:     "test-host",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false, slog.Default())
+	dispatcher.SetHubEndpoint("http://hub.example.com:8080")
+
+	agent := &store.Agent{
+		ID:              "agent-1",
+		Name:            "test-agent",
+		Slug:            "test-agent",
+		GroveID:         "grove-1",
+		OwnerID:         "user-1",
+		RuntimeBrokerID: "host-1",
+		AppliedConfig: &store.AgentAppliedConfig{
+			HarnessConfig: "claude",
+		},
+	}
+
+	err := dispatcher.DispatchAgentStart(ctx, agent, "")
+	if err != nil {
+		t.Fatalf("DispatchAgentStart failed: %v", err)
+	}
+
+	if !mockClient.startCalled {
+		t.Fatal("expected StartAgent to be called")
+	}
+
+	if mockClient.lastResolvedEnv == nil {
+		t.Fatal("expected resolvedEnv to be non-nil")
+	}
+
+	// Verify hub endpoint is included in resolvedEnv
+	if ep, ok := mockClient.lastResolvedEnv["SCION_HUB_ENDPOINT"]; !ok {
+		t.Error("expected SCION_HUB_ENDPOINT in resolvedEnv")
+	} else if ep != "http://hub.example.com:8080" {
+		t.Errorf("SCION_HUB_ENDPOINT = %q, want %q", ep, "http://hub.example.com:8080")
+	}
+
+	// Verify agent identity vars are also present
+	if mockClient.lastResolvedEnv["SCION_AGENT_ID"] != "agent-1" {
+		t.Errorf("SCION_AGENT_ID = %q, want %q", mockClient.lastResolvedEnv["SCION_AGENT_ID"], "agent-1")
+	}
+	if mockClient.lastResolvedEnv["SCION_GROVE_ID"] != "grove-1" {
+		t.Errorf("SCION_GROVE_ID = %q, want %q", mockClient.lastResolvedEnv["SCION_GROVE_ID"], "grove-1")
+	}
+}

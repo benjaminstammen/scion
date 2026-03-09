@@ -1923,6 +1923,78 @@ func TestStartAgentBrokerConfigUsedWhenNoGroveSettings(t *testing.T) {
 	}
 }
 
+// TestStartAgentResolvedEnvHubEndpointFallback verifies that when the broker
+// has no HubEndpoint configured, the hub endpoint from resolvedEnv (sent by
+// the hub dispatcher) is used as a fallback.
+func TestStartAgentResolvedEnvHubEndpointFallback(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+	cfg.HubEndpoint = "" // Standalone broker without hub endpoint config
+	cfg.Debug = true
+
+	mgr := &provisionCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	body := `{"resolvedEnv": {"SCION_HUB_ENDPOINT": "http://hub.example.com:8080", "SCION_GROVE_ID": "grove-1"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/test-agent/start", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, w.Code, w.Body.String())
+	}
+
+	if !mgr.startCalled {
+		t.Fatal("expected Start to be called")
+	}
+
+	// Hub endpoint should fall back to the resolvedEnv value
+	if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "http://hub.example.com:8080" {
+		t.Errorf("expected SCION_HUB_ENDPOINT='http://hub.example.com:8080' from resolvedEnv, got %q", got)
+	}
+}
+
+// TestStartAgentResolvedEnvHubEndpointWithContainerOverride verifies that when
+// the hub endpoint from resolvedEnv is localhost, the ContainerHubEndpoint
+// override is applied.
+func TestStartAgentResolvedEnvHubEndpointWithContainerOverride(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+	cfg.HubEndpoint = ""                                              // No broker-level hub endpoint
+	cfg.ContainerHubEndpoint = "http://host.containers.internal:9810" // But has container override
+	cfg.Debug = true
+
+	mgr := &provisionCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	// resolvedEnv has localhost endpoint from the hub
+	body := `{"resolvedEnv": {"SCION_HUB_ENDPOINT": "http://localhost:9810"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/test-agent/start", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, w.Code, w.Body.String())
+	}
+
+	if !mgr.startCalled {
+		t.Fatal("expected Start to be called")
+	}
+
+	// ContainerHubEndpoint override should be applied since resolvedEnv was localhost
+	if got := mgr.lastOpts.Env["SCION_HUB_ENDPOINT"]; got != "http://host.containers.internal:9810" {
+		t.Errorf("expected SCION_HUB_ENDPOINT='http://host.containers.internal:9810', got %q", got)
+	}
+}
+
 // TestStartAgentBrokerIDEnv verifies that startAgent sets SCION_BROKER_ID from broker config.
 func TestStartAgentBrokerIDEnv(t *testing.T) {
 	srv, mgr := newTestServerWithProvisionCapture()

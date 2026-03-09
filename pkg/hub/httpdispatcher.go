@@ -775,9 +775,10 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 		}
 	}
 
-	// Include agent identity so the container can report status to the Hub.
-	// The createAgent path sets SCION_AGENT_ID via the request body, but the
-	// startAgent path on the broker doesn't — so we inject it here.
+	// Include agent identity and hub connectivity so the container can
+	// report status to the Hub. The createAgent path sets these via the
+	// request body, but the startAgent path on the broker doesn't — so
+	// we inject them here as resolved env vars.
 	if agent.ID != "" {
 		resolvedEnv["SCION_AGENT_ID"] = agent.ID
 	}
@@ -786,6 +787,13 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 	}
 	if agent.Slug != "" {
 		resolvedEnv["SCION_AGENT_SLUG"] = agent.Slug
+	}
+	// Include hub endpoint so the broker can inject it into the container.
+	// The createAgent path sends this as req.HubEndpoint, but the startAgent
+	// path relies on the broker's own config which may be empty for standalone
+	// brokers. Including it here ensures the broker always has the endpoint.
+	if d.hubEndpoint != "" {
+		resolvedEnv["SCION_HUB_ENDPOINT"] = d.hubEndpoint
 	}
 
 	// Generate a fresh agent token for Hub authentication

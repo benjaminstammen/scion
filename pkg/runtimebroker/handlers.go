@@ -1069,13 +1069,22 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 	if opts.Env == nil {
 		opts.Env = make(map[string]string)
 	}
-	// Hub endpoint resolution — same priority chain as createAgent:
-	// 1. Broker config HubEndpoint (fallback)
-	// 2. ContainerHubEndpoint override (only for localhost endpoints on non-k8s runtimes)
-	// 3. Grove settings hub.endpoint (highest priority)
+	// Hub endpoint resolution priority chain:
+	// 1. Broker config HubEndpoint
+	// 2. Hub-dispatched resolvedEnv SCION_HUB_ENDPOINT (fallback for standalone brokers)
+	// 3. ContainerHubEndpoint override (only for localhost endpoints on non-k8s runtimes)
+	// 4. Grove settings hub.endpoint (highest priority)
 	hubEndpoint := ""
 	if s.config.HubEndpoint != "" {
 		hubEndpoint = s.config.HubEndpoint
+	} else if ep, ok := startReq.ResolvedEnv["SCION_HUB_ENDPOINT"]; ok && ep != "" {
+		// Standalone brokers may not have s.config.HubEndpoint set.
+		// The hub dispatcher includes the endpoint in resolvedEnv so
+		// we can use it as a fallback.
+		hubEndpoint = ep
+		if s.config.Debug {
+			s.agentLifecycleLog.Debug("startAgent: hub endpoint from resolvedEnv", "endpoint", ep)
+		}
 	}
 	if s.config.ContainerHubEndpoint != "" && isLocalhostEndpoint(hubEndpoint) &&
 		(s.runtime == nil || s.runtime.Name() != "kubernetes") {
