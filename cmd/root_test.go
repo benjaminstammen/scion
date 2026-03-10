@@ -90,6 +90,16 @@ func TestFormatFlagCheck(t *testing.T) {
 		},
 	}
 
+	// Test that look command clears outputFormat (json no-op)
+	t.Run("Json format, look command (no-op)", func(t *testing.T) {
+		outputFormat = "json"
+		err := rootCmd.PersistentPreRunE(lookCmd, []string{})
+		if err != nil {
+			assert.NotContains(t, err.Error(), "format")
+		}
+		assert.Empty(t, outputFormat, "outputFormat should be cleared for look command")
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			outputFormat = tt.format

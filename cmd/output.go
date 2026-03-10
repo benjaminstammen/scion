@@ -76,6 +76,13 @@ func outputActionResult(r ActionResult) error {
 	return nil
 }
 
+// jsonNoOpCommands lists commands where --format json is silently accepted but ignored.
+// These commands produce unstructured output (e.g. raw terminal captures) where JSON
+// formatting doesn't apply, but callers passing --format json globally should not get errors.
+var jsonNoOpCommands = map[string]bool{
+	"scion look": true,
+}
+
 // interactiveOnlyCommands maps command paths to the reason they cannot support --format json.
 var interactiveOnlyCommands = map[string]string{
 	"scion attach":              "it requires an interactive terminal session",

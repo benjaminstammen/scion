@@ -121,6 +121,10 @@ return an error instead of blocking.`,
 				if reason, ok := interactiveOnlyCommands[cmd.CommandPath()]; ok {
 					return fmt.Errorf("--format json is not supported for '%s' because %s", cmd.CommandPath(), reason)
 				}
+				// Silently ignore --format json for commands that don't support structured output
+				if jsonNoOpCommands[cmd.CommandPath()] {
+					outputFormat = ""
+				}
 			}
 		}
 

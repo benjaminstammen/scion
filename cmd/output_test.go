@@ -289,6 +289,17 @@ func TestInteractiveOnlyCommands(t *testing.T) {
 	}
 }
 
+func TestJSONNoOpCommands(t *testing.T) {
+	// Verify expected commands are in the no-op map
+	assert.True(t, jsonNoOpCommands["scion look"], "scion look should be in jsonNoOpCommands")
+
+	// Verify no-op commands are not also in the interactive-only map
+	for cmd := range jsonNoOpCommands {
+		_, ok := interactiveOnlyCommands[cmd]
+		assert.False(t, ok, "command %q should not be in both jsonNoOpCommands and interactiveOnlyCommands", cmd)
+	}
+}
+
 func TestActionResultJSONSerialization(t *testing.T) {
 	result := ActionResult{
 		Status:   "success",
