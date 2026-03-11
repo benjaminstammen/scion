@@ -33,12 +33,15 @@ import (
 
 // mockManager implements agent.Manager for testing
 type mockManager struct {
-	agents        []api.AgentInfo
-	startCalls    int
-	stopCalls     int
-	startErr      error
-	stopErr       error
-	lastStartOpts api.StartOptions
+	agents              []api.AgentInfo
+	startCalls          int
+	stopCalls           int
+	deleteCalls         int
+	startErr            error
+	stopErr             error
+	lastStartOpts       api.StartOptions
+	lastDeleteGrovePath string
+	lastDeleteAgentID   string
 }
 
 func (m *mockManager) Provision(ctx context.Context, opts api.StartOptions) (*api.ScionConfig, error) {
@@ -66,6 +69,9 @@ func (m *mockManager) Stop(ctx context.Context, agentID string) error {
 }
 
 func (m *mockManager) Delete(ctx context.Context, agentID string, deleteFiles bool, grovePath string, removeBranch bool) (bool, error) {
+	m.lastDeleteGrovePath = grovePath
+	m.lastDeleteAgentID = agentID
+	m.deleteCalls++
 	return true, nil
 }
 
@@ -2303,6 +2309,91 @@ func TestDeleteGrove_PathTraversal_Blocked(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for path traversal attempt, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFindAgentInHubNativeGroves(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Create hub-native grove structure with an agent directory
+	groveSlug := "my-project"
+	scionDir := filepath.Join(tmpHome, ".scion", "groves", groveSlug, ".scion")
+	agentDir := filepath.Join(scionDir, "agents", "test-agent")
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("failed to create agent dir: %v", err)
+	}
+
+	// Should find the agent in the hub-native grove
+	result := findAgentInHubNativeGroves("test-agent")
+	if result != scionDir {
+		t.Errorf("expected %q, got %q", scionDir, result)
+	}
+
+	// Should not find a non-existent agent
+	result = findAgentInHubNativeGroves("nonexistent-agent")
+	if result != "" {
+		t.Errorf("expected empty string for nonexistent agent, got %q", result)
+	}
+
+	// Should handle missing groves directory gracefully
+	t.Setenv("HOME", t.TempDir())
+	result = findAgentInHubNativeGroves("test-agent")
+	if result != "" {
+		t.Errorf("expected empty string when groves dir missing, got %q", result)
+	}
+}
+
+func TestDeleteAgent_HubNativeGrove_NoContainer(t *testing.T) {
+	// Verify that deleting an agent in a hub-native grove resolves the correct
+	// grove path even when the container doesn't exist (e.g. created-only
+	// agent, pruned container).
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+
+	mgr := &mockManager{
+		agents: []api.AgentInfo{}, // No containers
+	}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Create hub-native grove with an agent directory and config file
+	groveSlug := "hub-grove"
+	scionDir := filepath.Join(tmpHome, ".scion", "groves", groveSlug, ".scion")
+	agentName := "orphaned-agent"
+	agentDir := filepath.Join(scionDir, "agents", agentName)
+	if err := os.MkdirAll(agentDir, 0o755); err != nil {
+		t.Fatalf("failed to create agent dir: %v", err)
+	}
+	// Write a scion-agent.json so it looks like a real agent
+	if err := os.WriteFile(filepath.Join(agentDir, "scion-agent.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	// Send delete request — no container exists for this agent
+	req := httptest.NewRequest(http.MethodDelete,
+		"/api/v1/agents/"+agentName+"?deleteFiles=true&removeBranch=false", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	// Should succeed (204)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the mock manager's Delete was called with the correct grove path
+	if mgr.deleteCalls != 1 {
+		t.Fatalf("expected 1 Delete call, got %d", mgr.deleteCalls)
+	}
+	if mgr.lastDeleteGrovePath != scionDir {
+		t.Errorf("expected grovePath %q, got %q", scionDir, mgr.lastDeleteGrovePath)
+	}
+	if mgr.lastDeleteAgentID != agentName {
+		t.Errorf("expected agentID %q, got %q", agentName, mgr.lastDeleteAgentID)
 	}
 }
 

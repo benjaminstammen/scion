@@ -898,6 +898,19 @@ func (s *Server) deleteAgent(w http.ResponseWriter, r *http.Request, id string) 
 		}
 	}
 
+	// If no grove path was found (container missing or no annotation), check
+	// hub-native grove directories for the agent's files. Without this,
+	// agents in hub-native groves (~/.scion/groves/<slug>/) are silently
+	// skipped during file cleanup because the default filesystem scan only
+	// checks the CWD-resolved project dir and global ~/.scion.
+	if grovePath == "" && deleteFiles {
+		if resolved := findAgentInHubNativeGroves(id); resolved != "" {
+			grovePath = resolved
+			s.agentLifecycleLog.Debug("Resolved agent grove path from hub-native groves",
+				"agent_id", id, "path", grovePath)
+		}
+	}
+
 	// If this is a soft-delete, mark agent-info.json with deleted status before cleanup
 	if softDelete && grovePath != "" {
 		deletedAtStr := query.Get("deletedAt")
@@ -2039,6 +2052,34 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, slug string
 
 	s.agentLifecycleLog.Info("Removed hub-native grove directory", "slug", slug, "path", grovePath)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// findAgentInHubNativeGroves scans hub-native grove directories
+// (~/.scion/groves/<slug>/.scion/) for an agent directory matching the given
+// name. Returns the .scion project dir path if found, or empty string.
+// This is used as a fallback when the container is missing and the agent's
+// grove path can't be determined from container labels.
+func findAgentInHubNativeGroves(agentName string) string {
+	globalDir, err := config.GetGlobalDir()
+	if err != nil {
+		return ""
+	}
+	grovesDir := filepath.Join(globalDir, "groves")
+	entries, err := os.ReadDir(grovesDir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		scionDir := filepath.Join(grovesDir, entry.Name(), ".scion")
+		agentDir := filepath.Join(scionDir, "agents", agentName)
+		if _, err := os.Stat(agentDir); err == nil {
+			return scionDir
+		}
+	}
+	return ""
 }
 
 // isLocalhostEndpoint returns true if the given endpoint URL refers to a

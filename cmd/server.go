@@ -1966,6 +1966,21 @@ func (d *agentDispatcherAdapter) DispatchAgentDelete(ctx context.Context, hubAge
 		}
 	}
 
+	// For hub-native groves the provider LocalPath is typically empty.
+	// Resolve from the grove slug so file cleanup can find the agent
+	// directory at ~/.scion/groves/<slug>/.scion/agents/<name>.
+	if grovePath == "" && hubAgent.GroveID != "" && deleteFiles {
+		grove, err := d.store.GetGrove(ctx, hubAgent.GroveID)
+		if err == nil && grove.GitRemote == "" && grove.Slug != "" {
+			if globalDir, gErr := config.GetGlobalDir(); gErr == nil {
+				candidate := filepath.Join(globalDir, "groves", grove.Slug)
+				if _, sErr := os.Stat(candidate); sErr == nil {
+					grovePath = candidate
+				}
+			}
+		}
+	}
+
 	// Stop the agent first (ignore error if already stopped)
 	_ = d.manager.Stop(ctx, hubAgent.Name)
 
