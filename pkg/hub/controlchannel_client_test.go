@@ -113,6 +113,7 @@ func TestControlChannelBrokerClient_StartAgentSignsTunneledRequest(t *testing.T)
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("StartAgent returned error: %v", err)

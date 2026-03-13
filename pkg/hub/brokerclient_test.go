@@ -493,7 +493,7 @@ func TestAuthenticatedBrokerClient_AllOperations(t *testing.T) {
 		t.Errorf("CreateAgent failed: %v", err)
 	}
 
-	_, err = client.StartAgent(ctx, brokerID, server.URL, "test-agent", "", "", "", "", nil, nil, nil)
+	_, err = client.StartAgent(ctx, brokerID, server.URL, "test-agent", "", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Errorf("StartAgent failed: %v", err)
 	}

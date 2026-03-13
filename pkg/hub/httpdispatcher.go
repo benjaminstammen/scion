@@ -48,8 +48,8 @@ func (c *HTTPRuntimeBrokerClient) CreateAgent(ctx context.Context, brokerID, bro
 	return c.transport.CreateAgent(ctx, brokerID, brokerEndpoint, req)
 }
 
-func (c *HTTPRuntimeBrokerClient) StartAgent(ctx context.Context, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig string, resolvedEnv map[string]string, resolvedSecrets []ResolvedSecret, inlineConfig *api.ScionConfig) (*RemoteAgentResponse, error) {
-	return c.transport.StartAgent(ctx, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig, resolvedEnv, resolvedSecrets, inlineConfig)
+func (c *HTTPRuntimeBrokerClient) StartAgent(ctx context.Context, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig string, resolvedEnv map[string]string, resolvedSecrets []ResolvedSecret, inlineConfig *api.ScionConfig, sharedDirs []api.SharedDir) (*RemoteAgentResponse, error) {
+	return c.transport.StartAgent(ctx, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig, resolvedEnv, resolvedSecrets, inlineConfig, sharedDirs)
 }
 
 func (c *HTTPRuntimeBrokerClient) StopAgent(ctx context.Context, brokerID, brokerEndpoint, agentID string) error {
@@ -172,7 +172,7 @@ func (d *HTTPAgentDispatcher) getBrokerEndpoint(ctx context.Context, brokerID st
 // buildCreateRequest builds a RemoteCreateAgentRequest from the agent's store record.
 // This is shared between DispatchAgentCreate and DispatchAgentProvision.
 func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *store.Agent, callerName string) (*RemoteCreateAgentRequest, error) {
-	grovePath, groveSlug := d.resolveDispatchGrovePath(ctx, agent)
+	groveInfo := d.resolveDispatchGroveInfo(ctx, agent)
 
 	// Build the remote create request
 	req := &RemoteCreateAgentRequest{
@@ -183,8 +183,9 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 		GroveID:     agent.GroveID,
 		UserID:      agent.OwnerID,
 		HubEndpoint: d.hubEndpoint,
-		GrovePath:   grovePath,
-		GroveSlug:   groveSlug,
+		GrovePath:   groveInfo.grovePath,
+		GroveSlug:   groveInfo.groveSlug,
+		SharedDirs:  groveInfo.sharedDirs,
 	}
 
 	// Propagate attach mode from applied config
@@ -241,7 +242,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 		// When the broker has a local provider path for this grove, the
 		// workspace is derived from the grove path (not a hub-native path).
 		// Clear the hub-native workspace that populateAgentConfig may have set.
-		if grovePath != "" {
+		if groveInfo.grovePath != "" {
 			workspace = ""
 		}
 		req.Config = &RemoteAgentConfig{
@@ -367,23 +368,36 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 	return req, nil
 }
 
+// groveDispatchInfo contains resolved grove information for dispatching agent requests.
+type groveDispatchInfo struct {
+	grovePath  string
+	groveSlug  string
+	sharedDirs []api.SharedDir
+}
+
 func (d *HTTPAgentDispatcher) resolveDispatchGrovePath(ctx context.Context, agent *store.Agent) (string, string) {
+	info := d.resolveDispatchGroveInfo(ctx, agent)
+	return info.grovePath, info.groveSlug
+}
+
+func (d *HTTPAgentDispatcher) resolveDispatchGroveInfo(ctx context.Context, agent *store.Agent) groveDispatchInfo {
 	// Look up the local path for this grove on the target runtime broker.
 	// A provider LocalPath (linked grove) takes precedence over hub-native
 	// slug resolution, even for groves without a git remote. Only when there
 	// is no provider path and no git remote do we fall back to groveSlug so
 	// the broker resolves the conventional ~/.scion/groves/<slug> path.
 	if agent.GroveID == "" {
-		return "", ""
+		return groveDispatchInfo{}
 	}
 
-	var grovePath string
-	var groveSlug string
+	var info groveDispatchInfo
 
 	grove, err := d.store.GetGrove(ctx, agent.GroveID)
 	if err != nil {
-		return "", ""
+		return groveDispatchInfo{}
 	}
+
+	info.sharedDirs = grove.SharedDirs
 
 	// First check if the broker has a registered local path for this grove.
 	if agent.RuntimeBrokerID != "" {
@@ -393,18 +407,18 @@ func (d *HTTPAgentDispatcher) resolveDispatchGrovePath(ctx context.Context, agen
 				d.log.Warn("Failed to get grove provider for path lookup", "error", provErr)
 			}
 		} else if provider.LocalPath != "" {
-			grovePath = provider.LocalPath
+			info.grovePath = provider.LocalPath
 			if d.debug {
-				d.log.Debug("Found grove path for broker", "brokerID", agent.RuntimeBrokerID, "path", grovePath)
+				d.log.Debug("Found grove path for broker", "brokerID", agent.RuntimeBrokerID, "path", info.grovePath)
 			}
 		}
 	}
 	// If no provider path was found and the grove has no git remote,
 	// treat as hub-native: let the broker resolve the path via slug.
-	if grovePath == "" && grove.GitRemote == "" {
-		groveSlug = grove.Slug
+	if info.grovePath == "" && grove.GitRemote == "" {
+		info.groveSlug = grove.Slug
 	}
-	return grovePath, groveSlug
+	return info
 }
 
 // applyBrokerResponse updates agent fields from the broker's response.
@@ -746,7 +760,9 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 		task = agent.AppliedConfig.Task
 	}
 
-	grovePath, groveSlug := d.resolveDispatchGrovePath(ctx, agent)
+	groveInfo := d.resolveDispatchGroveInfo(ctx, agent)
+	grovePath := groveInfo.grovePath
+	groveSlug := groveInfo.groveSlug
 
 	// Resolve env vars from Hub storage (user/grove/broker scopes) so that
 	// API keys and other secrets are available when restarting an agent.
@@ -858,7 +874,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 		inlineConfig = agent.AppliedConfig.InlineConfig
 	}
 
-	resp, err := d.client.StartAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug, task, grovePath, groveSlug, harnessConfig, resolvedEnv, resolvedSecrets, inlineConfig)
+	resp, err := d.client.StartAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Slug, task, grovePath, groveSlug, harnessConfig, resolvedEnv, resolvedSecrets, inlineConfig, groveInfo.sharedDirs)
 	if err != nil {
 		return err
 	}

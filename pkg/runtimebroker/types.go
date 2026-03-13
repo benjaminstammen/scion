@@ -215,6 +215,11 @@ type CreateAgentRequest struct {
 	// When set, the broker applies this during agent provisioning, enabling
 	// inline configuration without pre-existing templates on the broker.
 	InlineConfig *api.ScionConfig `json:"inlineConfig,omitempty"`
+
+	// SharedDirs contains grove-level shared directory declarations.
+	// Resolved by the Hub from the grove record and passed to the broker
+	// so it can provision host-side directories and inject volume mounts.
+	SharedDirs []api.SharedDir `json:"sharedDirs,omitempty"`
 }
 
 // CreateAgentConfig contains configuration for agent creation.
@@ -249,6 +254,9 @@ type CreateAgentConfig struct {
 	// When set, the broker skips workspace mounting and injects env vars
 	// so sciontool can clone the repo inside the container.
 	GitClone *api.GitCloneConfig `json:"gitClone,omitempty"`
+
+	// SharedDirs contains grove-level shared directory declarations.
+	SharedDirs []api.SharedDir `json:"sharedDirs,omitempty"`
 }
 
 // CreateAgentResponse is the response for creating an agent.

@@ -189,7 +189,7 @@ type RuntimeBrokerClient interface {
 	// resolvedEnv contains environment variables resolved from Hub storage (API keys, etc.).
 	// harnessConfig is the harness config name to use for the agent (e.g. "claude", "gemini").
 	// resolvedSecrets contains type-aware secrets (including file-type) for auth resolution.
-	StartAgent(ctx context.Context, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig string, resolvedEnv map[string]string, resolvedSecrets []ResolvedSecret, inlineConfig *api.ScionConfig) (*RemoteAgentResponse, error)
+	StartAgent(ctx context.Context, brokerID, brokerEndpoint, agentID, task, grovePath, groveSlug, harnessConfig string, resolvedEnv map[string]string, resolvedSecrets []ResolvedSecret, inlineConfig *api.ScionConfig, sharedDirs []api.SharedDir) (*RemoteAgentResponse, error)
 
 	// StopAgent stops an agent on a remote runtime broker.
 	// brokerID is used for HMAC authentication lookup.
@@ -278,6 +278,11 @@ type RemoteCreateAgentRequest struct {
 	// config field. The broker applies this during agent provisioning,
 	// enabling inline configuration without pre-existing templates.
 	InlineConfig *api.ScionConfig `json:"inlineConfig,omitempty"`
+
+	// SharedDirs contains grove-level shared directory declarations.
+	// Resolved by the Hub from the grove record and passed to the broker
+	// so it can provision host-side directories and inject volume mounts.
+	SharedDirs []api.SharedDir `json:"sharedDirs,omitempty"`
 }
 
 // ResolvedSecret represents a secret resolved by the Hub for projection into an agent container.

@@ -588,6 +588,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		opts.InlineConfig = req.InlineConfig
 	}
 
+	// Pass through grove-level shared directories
+	if len(req.SharedDirs) > 0 {
+		opts.SharedDirs = req.SharedDirs
+	}
+
 	// Save template slug before hydration may replace opts.Template with a cache path
 	templateSlug := ""
 	if req.Config != nil {
@@ -992,6 +997,7 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 		ResolvedEnv     map[string]string    `json:"resolvedEnv"`
 		ResolvedSecrets []api.ResolvedSecret `json:"resolvedSecrets,omitempty"`
 		InlineConfig    *api.ScionConfig     `json:"inlineConfig,omitempty"`
+		SharedDirs      []api.SharedDir      `json:"sharedDirs,omitempty"`
 	}
 	if r.Body != nil && r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&startReq); err != nil {
@@ -1034,6 +1040,7 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 		BrokerMode:    true,
 		Task:          startReq.Task,
 		HarnessConfig: startReq.HarnessConfig,
+		SharedDirs:    startReq.SharedDirs,
 	}
 
 	// Apply resolved env vars from Hub (API keys, secrets, etc.)

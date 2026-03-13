@@ -613,13 +613,19 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		finalScionCfg != nil && finalScionCfg.Telemetry != nil,
 		finalScionCfg != nil && finalScionCfg.Telemetry != nil && finalScionCfg.Telemetry.Cloud != nil)
 
-	// Inject shared directory volumes from grove settings
-	var sharedDirVolumes []api.VolumeMount
+	// Inject shared directory volumes from grove settings or opts (hub-dispatched)
+	var effectiveSharedDirs []api.SharedDir
 	if settings != nil && len(settings.SharedDirs) > 0 {
-		if err := config.EnsureSharedDirs(projectDir, settings.SharedDirs); err != nil {
+		effectiveSharedDirs = settings.SharedDirs
+	} else if len(opts.SharedDirs) > 0 {
+		effectiveSharedDirs = opts.SharedDirs
+	}
+	var sharedDirVolumes []api.VolumeMount
+	if len(effectiveSharedDirs) > 0 {
+		if err := config.EnsureSharedDirs(projectDir, effectiveSharedDirs); err != nil {
 			util.Debugf("Start: failed to ensure shared dirs: %v", err)
 		}
-		sdVolumes, err := config.SharedDirsToVolumeMounts(projectDir, settings.SharedDirs)
+		sdVolumes, err := config.SharedDirsToVolumeMounts(projectDir, effectiveSharedDirs)
 		if err != nil {
 			util.Debugf("Start: failed to resolve shared dir volumes: %v", err)
 		} else {
@@ -693,12 +699,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 			return nil
 		}(),
 		GitClone: opts.GitClone,
-		SharedDirs: func() []api.SharedDir {
-			if settings != nil {
-				return settings.SharedDirs
-			}
-			return nil
-		}(),
+		SharedDirs: effectiveSharedDirs,
 		BrokerMode: opts.BrokerMode,
 		Debug:      util.DebugEnabled(),
 		Resume:     opts.Resume,

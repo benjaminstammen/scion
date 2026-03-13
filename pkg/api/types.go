@@ -545,6 +545,7 @@ type StartOptions struct {
 	GitClone          *GitCloneConfig // When set, skip workspace creation; sciontool clones inside container
 	TelemetryOverride *bool           // Explicit telemetry override from CLI flags (--enable-telemetry / --disable-telemetry)
 	InlineConfig      *ScionConfig    // Inline config from --config flag, merged over template config
+	SharedDirs        []SharedDir     // Grove-level shared directories (from Hub, merged with settings)
 }
 
 type StatusEvent struct {
