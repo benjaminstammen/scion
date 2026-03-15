@@ -1976,6 +1976,8 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *t
 
 	// Create a linked grove with a local provider path.
 	// This grove has a GitRemote so it is treated as a linked grove (not hub-native).
+	// Even though the broker has the repo locally, all hub-linked groves with a
+	// git remote use clone-based provisioning (HTTPS + GitHub token).
 	grove := &store.Grove{
 		ID:        "grove-local",
 		Name:      "Local Grove",
@@ -2022,9 +2024,9 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *t
 			HarnessConfig: "claude",
 			Workspace:     "/should/be/cleared",
 			// GitClone is set by populateAgentConfig for any grove with a
-			// GitRemote. For linked groves (broker has local path), the
-			// dispatcher should clear this so the broker uses worktree-based
-			// workspace management instead of cloning.
+			// GitRemote. For linked groves (broker has local path), GitClone
+			// is preserved so the broker uses clone-based provisioning
+			// (HTTPS + GitHub token) rather than local worktrees.
 			GitClone: &api.GitCloneConfig{
 				URL:    "https://github.com/example/local-project.git",
 				Branch: "main",
@@ -2062,10 +2064,14 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *t
 		t.Errorf("expected empty Workspace for local-path grove, got '%s'", mockClient.lastCreateReq.Config.Workspace)
 	}
 
-	// GitClone should be cleared for linked groves — the broker already has the
-	// repo locally and should use worktree-based workspace management.
-	if mockClient.lastCreateReq.Config.GitClone != nil {
-		t.Errorf("expected nil GitClone for linked grove with local provider path, got %+v", mockClient.lastCreateReq.Config.GitClone)
+	// GitClone should be preserved for linked groves with a git remote — all
+	// hub-linked groves use clone-based provisioning (HTTPS + GitHub token).
+	if mockClient.lastCreateReq.Config.GitClone == nil {
+		t.Fatal("expected GitClone to be preserved for linked grove with git remote")
+	}
+	if mockClient.lastCreateReq.Config.GitClone.URL != "https://github.com/example/local-project.git" {
+		t.Errorf("expected GitClone URL 'https://github.com/example/local-project.git', got '%s'",
+			mockClient.lastCreateReq.Config.GitClone.URL)
 	}
 }
 

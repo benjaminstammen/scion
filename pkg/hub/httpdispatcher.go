@@ -240,14 +240,15 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 	if agent.AppliedConfig != nil {
 		workspace := agent.AppliedConfig.Workspace
 		gitClone := agent.AppliedConfig.GitClone
-		// When the broker has a local provider path for this grove, the
-		// workspace is derived from the grove path (not a hub-native path).
-		// Clear the hub-native workspace and git clone config that
-		// populateAgentConfig may have set — the broker already has the
-		// repo locally and will use worktree-based workspace management.
+		// When the broker has a local provider path for this grove, clear
+		// the hub-native workspace path — the broker will derive its own
+		// workspace location from the grove path. However, keep GitClone
+		// config: all hub-linked groves with a git remote use clone-based
+		// provisioning (HTTPS + GitHub token) rather than worktree-based,
+		// ensuring a consistent workspace strategy regardless of whether
+		// the broker happens to have the repo locally.
 		if groveInfo.grovePath != "" {
 			workspace = ""
-			gitClone = nil
 		}
 		req.Config = &RemoteAgentConfig{
 			Template:      agent.Template,

@@ -570,6 +570,23 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool, i
 		return wrapHubError(err)
 	}
 
+	// Check if this is a git-based grove. When hub is enabled, all git-based
+	// groves use clone-based provisioning (HTTPS + GitHub token) rather than
+	// local worktrees. Inform the user and validate early.
+	if !isJSONOutput() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		grove, groveErr := hubCtx.Client.Groves().Get(ctx, groveID)
+		cancel()
+		if groveErr == nil && grove != nil && grove.GitRemote != "" {
+			cloneURL := grove.Labels["scion.dev/clone-url"]
+			if cloneURL == "" {
+				cloneURL = "https://" + grove.GitRemote + ".git"
+			}
+			fmt.Fprintf(os.Stderr, "Using hub, cloning repo %s\n", cloneURL)
+			fmt.Fprintf(os.Stderr, "  (Hub mode uses HTTPS clone with GITHUB_TOKEN; local worktrees are not used)\n")
+		}
+	}
+
 	// Resolve template if specified (Section 9.4 - Local Template Resolution)
 	var resolvedTemplate string
 	if templateName != "" {
