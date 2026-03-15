@@ -579,48 +579,38 @@ export class ScionPageTerminal extends LitElement {
     this.clipboardAddon = null;
   }
 
-  private toggleMouse(): void {
+  /**
+   * Explicitly set tmux mouse mode via prefix key bindings.
+   * Uses Ctrl-B M (mouse on) / Ctrl-B m (mouse off) rather than a toggle
+   * to avoid state drift between the UI and tmux.
+   */
+  private setMouseMode(enabled: boolean): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    // Send tmux prefix (Ctrl-B) + 'm' to trigger the togglemouse binding
-    this.sendData('\x02m');
-    this.mouseEnabled = !this.mouseEnabled;
+    // Ctrl-B M = set mouse on, Ctrl-B m = set mouse off
+    this.sendData(enabled ? '\x02M' : '\x02m');
+    this.mouseEnabled = enabled;
     this.terminal?.focus();
   }
 
   /**
-   * Switch to the "agent" tmux window. Sends tmux select-window command.
+   * Switch to the "agent" tmux window via prefix key binding (Ctrl-B A).
    */
   private switchToAgent(): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    // Use tmux command mode to select the agent window
-    this.sendTmuxCommand('select-window -t scion:agent');
+    this.sendData('\x02A');
     this.activeWindow = 'agent';
     this.terminal?.focus();
   }
 
   /**
-   * Switch to the "shell" tmux window. If the window doesn't exist
-   * (user exited), create a new one.
+   * Switch to the "shell" tmux window via prefix key binding (Ctrl-B S).
+   * The binding in .tmux.conf handles creating the window if it was closed.
    */
   private switchToShell(): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return;
-    // Try to select the shell window; if it doesn't exist, create it then select it.
-    // We use tmux command-mode chaining: if select-window fails, new-window creates it.
-    this.sendTmuxCommand(
-      'if-shell -F "#{==:#{session_windows},#{session_windows}}" ' +
-      '"select-window -t scion:shell || new-window -t scion -n shell"'
-    );
+    this.sendData('\x02S');
     this.activeWindow = 'shell';
     this.terminal?.focus();
-  }
-
-  /**
-   * Sends a tmux command via the prefix + : (command prompt) sequence.
-   * This types the command and presses Enter.
-   */
-  private sendTmuxCommand(cmd: string): void {
-    // Ctrl-B : enters tmux command mode, then type the command + Enter
-    this.sendData(`\x02:${cmd}\n`);
   }
 
   private handleReconnect(): void {
@@ -698,13 +688,13 @@ export class ScionPageTerminal extends LitElement {
           <button
             class=${this.mouseEnabled ? 'active' : ''}
             title="Mouse mode (terminal mouse events)"
-            @click=${() => { if (!this.mouseEnabled) this.toggleMouse(); }}
+            @click=${() => this.setMouseMode(true)}
             ?disabled=${!this.connected}
           >${this.renderMouseIcon()}</button>
           <button
             class=${!this.mouseEnabled ? 'active' : ''}
             title="Clipboard mode (browser text selection)"
-            @click=${() => { if (this.mouseEnabled) this.toggleMouse(); }}
+            @click=${() => this.setMouseMode(false)}
             ?disabled=${!this.connected}
           >${this.renderClipboardIcon()}</button>
         </div>
