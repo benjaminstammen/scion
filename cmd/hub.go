@@ -1004,26 +1004,10 @@ func runHubGrovesInfo(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Find the grove by name, falling back to the linked hub grove ID
+	// Find the grove by name
 	grove, err := findGroveByName(ctx, client, groveName)
 	if err != nil {
-		// Name lookup failed — try the linked hub grove ID from settings.
-		// The hub grove may have a different name than the local grove
-		// (e.g. after a stale re-link or rename).
-		hubGroveID := settings.GetHubGroveID()
-		if hubGroveID == "" {
-			hubGroveID = settings.GroveID
-		}
-		if hubGroveID != "" {
-			linkedGrove, linkErr := getLinkedGrove(ctx, client, hubGroveID)
-			if linkErr == nil && linkedGrove != nil {
-				grove = linkedGrove
-			} else {
-				return err // return original name-lookup error
-			}
-		} else {
-			return err
-		}
+		return err
 	}
 
 	// Get providers for this grove

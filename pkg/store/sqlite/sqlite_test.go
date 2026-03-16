@@ -532,21 +532,16 @@ func TestGroveCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, grove.ID, retrieved.ID)
 
-	// Multiple groves can share the same git remote (different directories
-	// in the same repository with separate .scion/ markers).
-	sameRemote := &store.Grove{
+	// Test unique constraint on git remote
+	duplicate := &store.Grove{
 		ID:         api.NewUUID(),
-		Name:       "Same Repo Different Grove",
-		Slug:       "same-repo-different-grove",
+		Name:       "Duplicate",
+		Slug:       "duplicate",
 		GitRemote:  "github.com/org/repo",
 		Visibility: store.VisibilityPrivate,
 	}
-	err = s.CreateGrove(ctx, sameRemote)
-	assert.NoError(t, err)
-
-	// Clean up the second grove
-	err = s.DeleteGrove(ctx, sameRemote.ID)
-	require.NoError(t, err)
+	err = s.CreateGrove(ctx, duplicate)
+	assert.ErrorIs(t, err, store.ErrAlreadyExists)
 
 	// Update grove
 	retrieved.Name = "Updated Project"
