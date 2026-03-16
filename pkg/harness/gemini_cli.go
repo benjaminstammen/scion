@@ -293,6 +293,9 @@ func (g *GeminiCLI) InjectAgentInstructions(agentHome string, content []byte) er
 }
 
 func (g *GeminiCLI) GetTelemetryEnv() map[string]string {
+	// Gemini CLI's documented external collector mode uses useCollector=true
+	// with an OTLP endpoint/protocol. We point that at the local sciontool
+	// receiver so raw Gemini OTEL logs/metrics/traces enter the same pipeline.
 	return map[string]string{
 		"GEMINI_TELEMETRY_ENABLED":       "true",
 		"GEMINI_TELEMETRY_TARGET":        "local",

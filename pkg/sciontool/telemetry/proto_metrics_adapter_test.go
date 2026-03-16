@@ -25,7 +25,7 @@ func TestProtoResourceMetricsToSDK(t *testing.T) {
 				{
 					Metrics: []*metricpb.Metric{
 						{
-							Name: "claude_code.token.usage",
+							Name: "gemini_cli.token.usage",
 							Unit: "tokens",
 							Data: &metricpb.Metric_Sum{
 								Sum: &metricpb.Sum{
@@ -100,6 +100,9 @@ func TestProtoResourceMetricsToSDK(t *testing.T) {
 	}
 	if _, ok := got[0].ScopeMetrics[0].Metrics[2].Data.(metricdata.Histogram[float64]); !ok {
 		t.Fatalf("third metric data type = %T, want metricdata.Histogram[float64]", got[0].ScopeMetrics[0].Metrics[2].Data)
+	}
+	if got[0].ScopeMetrics[0].Metrics[0].Name != "gemini_cli.token.usage" {
+		t.Fatalf("first metric name = %q, want gemini_cli.token.usage", got[0].ScopeMetrics[0].Metrics[0].Name)
 	}
 }
 

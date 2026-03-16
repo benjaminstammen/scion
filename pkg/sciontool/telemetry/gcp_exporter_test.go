@@ -44,7 +44,7 @@ func TestGCPExporter_ExportProtoMetrics(t *testing.T) {
 				{
 					Metrics: []*metricpb.Metric{
 						{
-							Name: "claude_code.token.usage",
+							Name: "gemini_cli.token.usage",
 							Data: &metricpb.Metric_Sum{
 								Sum: &metricpb.Sum{
 									AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
@@ -52,6 +52,20 @@ func TestGCPExporter_ExportProtoMetrics(t *testing.T) {
 										{
 											TimeUnixNano: 1,
 											Value:        &metricpb.NumberDataPoint_AsInt{AsInt: 100},
+										},
+									},
+								},
+							},
+						},
+						{
+							Name: "gen_ai.client.token.usage",
+							Data: &metricpb.Metric_Sum{
+								Sum: &metricpb.Sum{
+									AggregationTemporality: metricpb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
+									DataPoints: []*metricpb.NumberDataPoint{
+										{
+											TimeUnixNano: 2,
+											Value:        &metricpb.NumberDataPoint_AsInt{AsInt: 55},
 										},
 									},
 								},
@@ -68,8 +82,14 @@ func TestGCPExporter_ExportProtoMetrics(t *testing.T) {
 	if len(exp.exports) != 1 {
 		t.Fatalf("len(exports) = %d, want 1", len(exp.exports))
 	}
-	if len(exp.exports[0].ScopeMetrics) != 1 || len(exp.exports[0].ScopeMetrics[0].Metrics) != 1 {
+	if len(exp.exports[0].ScopeMetrics) != 1 || len(exp.exports[0].ScopeMetrics[0].Metrics) != 2 {
 		t.Fatalf("unexpected exported metrics structure: %+v", exp.exports[0])
+	}
+	if got := exp.exports[0].ScopeMetrics[0].Metrics[0].Name; got != "gemini_cli.token.usage" {
+		t.Fatalf("first exported metric name = %q, want gemini_cli.token.usage", got)
+	}
+	if got := exp.exports[0].ScopeMetrics[0].Metrics[1].Name; got != "gen_ai.client.token.usage" {
+		t.Fatalf("second exported metric name = %q, want gen_ai.client.token.usage", got)
 	}
 }
 
