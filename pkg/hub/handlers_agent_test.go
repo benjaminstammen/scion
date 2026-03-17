@@ -3238,3 +3238,245 @@ func TestCreateAgent_DispatchFailure_CleansUpBroker(t *testing.T) {
 	_, err := s.GetAgent(ctx, "auth-fail-agent")
 	assert.ErrorIs(t, err, store.ErrNotFound, "agent should be deleted from hub store after dispatch failure")
 }
+
+// --- GCP Identity Assignment Tests ---
+
+func TestCreateAgent_GCPIdentityAssign(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Register and verify a GCP service account
+	sa := &store.GCPServiceAccount{
+		ID:        "sa-assign-1",
+		Scope:     store.ScopeGrove,
+		ScopeID:   grove.ID,
+		Email:     "worker@project.iam.gserviceaccount.com",
+		ProjectID: "my-project",
+		Verified:  true,
+		VerifiedAt: time.Now(),
+		CreatedBy: "user-1",
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, s.CreateGCPServiceAccount(ctx, sa))
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-assign-agent",
+		GroveID: grove.ID,
+		Task:    "do something",
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode:     "assign",
+			ServiceAccountID: sa.ID,
+		},
+	})
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+	require.NotNil(t, resp.Agent.AppliedConfig)
+	require.NotNil(t, resp.Agent.AppliedConfig.GCPIdentity)
+	assert.Equal(t, store.GCPMetadataModeAssign, resp.Agent.AppliedConfig.GCPIdentity.MetadataMode)
+	assert.Equal(t, sa.ID, resp.Agent.AppliedConfig.GCPIdentity.ServiceAccountID)
+	assert.Equal(t, sa.Email, resp.Agent.AppliedConfig.GCPIdentity.ServiceAccountEmail)
+	assert.Equal(t, sa.ProjectID, resp.Agent.AppliedConfig.GCPIdentity.ProjectID)
+
+	// Verify persistence
+	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
+	require.NoError(t, err)
+	require.NotNil(t, persisted.AppliedConfig.GCPIdentity)
+	assert.Equal(t, store.GCPMetadataModeAssign, persisted.AppliedConfig.GCPIdentity.MetadataMode)
+	assert.Equal(t, sa.ID, persisted.AppliedConfig.GCPIdentity.ServiceAccountID)
+}
+
+func TestCreateAgent_GCPIdentityBlock(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-block-agent",
+		GroveID: grove.ID,
+		Task:    "do something",
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode: "block",
+		},
+	})
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent.AppliedConfig.GCPIdentity)
+	assert.Equal(t, store.GCPMetadataModeBlock, resp.Agent.AppliedConfig.GCPIdentity.MetadataMode)
+	assert.Empty(t, resp.Agent.AppliedConfig.GCPIdentity.ServiceAccountID)
+
+	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.GCPMetadataModeBlock, persisted.AppliedConfig.GCPIdentity.MetadataMode)
+}
+
+func TestCreateAgent_GCPIdentityPassthrough(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-passthrough-agent",
+		GroveID: grove.ID,
+		Task:    "do something",
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode: "passthrough",
+		},
+	})
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent.AppliedConfig.GCPIdentity)
+	assert.Equal(t, store.GCPMetadataModePassthrough, resp.Agent.AppliedConfig.GCPIdentity.MetadataMode)
+}
+
+func TestCreateAgent_GCPIdentityNoField(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-none-agent",
+		GroveID: grove.ID,
+		Task:    "do something",
+	})
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Nil(t, resp.Agent.AppliedConfig.GCPIdentity, "GCPIdentity should be nil when not specified")
+}
+
+func TestCreateAgent_GCPIdentityInvalidMode(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-invalid-mode",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode: "invalid",
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAgent_GCPIdentityAssignMissingSA(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-missing-sa",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode: "assign",
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAgent_GCPIdentityAssignNonexistentSA(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-nonexistent-sa",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode:     "assign",
+			ServiceAccountID: "nonexistent-sa-id",
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAgent_GCPIdentityAssignUnverifiedSA(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	sa := &store.GCPServiceAccount{
+		ID:        "sa-unverified-1",
+		Scope:     store.ScopeGrove,
+		ScopeID:   grove.ID,
+		Email:     "unverified@project.iam.gserviceaccount.com",
+		ProjectID: "my-project",
+		Verified:  false,
+		CreatedBy: "user-1",
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, s.CreateGCPServiceAccount(ctx, sa))
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-unverified-sa",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode:     "assign",
+			ServiceAccountID: sa.ID,
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAgent_GCPIdentityAssignWrongGrove(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, s, grove := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	sa := &store.GCPServiceAccount{
+		ID:        "sa-other-grove-1",
+		Scope:     store.ScopeGrove,
+		ScopeID:   "other-grove-id",
+		Email:     "other@project.iam.gserviceaccount.com",
+		ProjectID: "my-project",
+		Verified:  true,
+		VerifiedAt: time.Now(),
+		CreatedBy: "user-1",
+		CreatedAt: time.Now(),
+	}
+	require.NoError(t, s.CreateGCPServiceAccount(ctx, sa))
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-wrong-grove",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode:     "assign",
+			ServiceAccountID: sa.ID,
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAgent_GCPIdentityBlockWithSAID(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-block-with-sa",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode:     "block",
+			ServiceAccountID: "should-not-be-here",
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAgent_GCPIdentityPassthroughWithSAID(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, _, grove := setupCreateAgentServer(t, disp)
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "gcp-passthrough-with-sa",
+		GroveID: grove.ID,
+		GCPIdentity: &GCPIdentityAssignment{
+			MetadataMode:     "passthrough",
+			ServiceAccountID: "should-not-be-here",
+		},
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}

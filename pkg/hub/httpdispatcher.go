@@ -219,6 +219,10 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 			for _, s := range agent.AppliedConfig.HubAccessScopes {
 				additionalScopes = append(additionalScopes, AgentTokenScope(s))
 			}
+			// Inject GCP token scope when the agent has an assigned service account
+			if gcpID := agent.AppliedConfig.GCPIdentity; gcpID != nil && gcpID.MetadataMode == store.GCPMetadataModeAssign && gcpID.ServiceAccountID != "" {
+				additionalScopes = append(additionalScopes, GCPTokenScopeForSA(gcpID.ServiceAccountID))
+			}
 		}
 		token, err := d.tokenGenerator.GenerateAgentToken(agent.ID, agent.GroveID, additionalScopes...)
 		if err != nil {
@@ -250,6 +254,14 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 		if groveInfo.grovePath != "" {
 			workspace = ""
 		}
+		var remoteGCPIdentity *RemoteGCPIdentityConfig
+		if gcpID := agent.AppliedConfig.GCPIdentity; gcpID != nil {
+			remoteGCPIdentity = &RemoteGCPIdentityConfig{
+				MetadataMode: gcpID.MetadataMode,
+				SAEmail:      gcpID.ServiceAccountEmail,
+				ProjectID:    gcpID.ProjectID,
+			}
+		}
 		req.Config = &RemoteAgentConfig{
 			Template:      agent.Template,
 			Image:         agent.AppliedConfig.Image,
@@ -262,6 +274,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 			TemplateID:    agent.AppliedConfig.TemplateID,
 			TemplateHash:  agent.AppliedConfig.TemplateHash,
 			GitClone:      gitClone,
+			GCPIdentity:   remoteGCPIdentity,
 		}
 		req.ResolvedEnv = agent.AppliedConfig.Env
 
@@ -844,6 +857,10 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 		if agent.AppliedConfig != nil {
 			for _, s := range agent.AppliedConfig.HubAccessScopes {
 				additionalScopes = append(additionalScopes, AgentTokenScope(s))
+			}
+			// Inject GCP token scope when the agent has an assigned service account
+			if gcpID := agent.AppliedConfig.GCPIdentity; gcpID != nil && gcpID.MetadataMode == store.GCPMetadataModeAssign && gcpID.ServiceAccountID != "" {
+				additionalScopes = append(additionalScopes, GCPTokenScopeForSA(gcpID.ServiceAccountID))
 			}
 		}
 		token, err := d.tokenGenerator.GenerateAgentToken(agent.ID, agent.GroveID, additionalScopes...)

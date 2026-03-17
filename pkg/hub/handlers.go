@@ -208,6 +208,15 @@ type CreateAgentRequest struct {
 	// CleanupMode controls stale-existing-agent cleanup behavior during create:
 	// "strict" (default) fails create if broker cleanup fails; "force" continues.
 	CleanupMode string `json:"cleanupMode,omitempty"`
+	// GCPIdentity specifies the GCP identity assignment for the agent.
+	// Controls metadata server behavior and optional service account binding.
+	GCPIdentity *GCPIdentityAssignment `json:"gcp_identity,omitempty"`
+}
+
+// GCPIdentityAssignment specifies GCP identity configuration for agent creation.
+type GCPIdentityAssignment struct {
+	MetadataMode     string `json:"metadata_mode"`                // "block", "passthrough", "assign"
+	ServiceAccountID string `json:"service_account_id,omitempty"` // Required when mode is "assign"
 }
 
 type CreateAgentResponse struct {
@@ -349,6 +358,25 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate GCP identity assignment structure (field-level; SA resolution happens in createAgentInGrove)
+	if req.GCPIdentity != nil {
+		switch req.GCPIdentity.MetadataMode {
+		case store.GCPMetadataModeBlock, store.GCPMetadataModePassthrough:
+			if req.GCPIdentity.ServiceAccountID != "" {
+				ValidationError(w, "service_account_id must be empty when metadata_mode is '"+req.GCPIdentity.MetadataMode+"'", nil)
+				return
+			}
+		case store.GCPMetadataModeAssign:
+			if req.GCPIdentity.ServiceAccountID == "" {
+				ValidationError(w, "service_account_id is required when metadata_mode is 'assign'", nil)
+				return
+			}
+		default:
+			ValidationError(w, "metadata_mode must be 'block', 'passthrough', or 'assign'", nil)
+			return
+		}
+	}
+
 	// Check if the caller is an agent (sub-agent creation)
 	var createdBy string
 	var creatorName string
@@ -429,6 +457,42 @@ func (s *Server) createAgentInGrove(
 		}
 	}
 
+	// Validate GCP identity SA assignment: verify the SA exists, belongs to this grove, and is verified.
+	var resolvedGCPSA *store.GCPServiceAccount
+	if req.GCPIdentity != nil && req.GCPIdentity.MetadataMode == store.GCPMetadataModeAssign {
+		// Authorization: only users with grove manage permission can assign SAs
+		if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
+			decision := s.authzService.CheckAccess(ctx, userIdent, Resource{
+				Type:       "grove",
+				ID:         groveID,
+			}, ActionManage)
+			if !decision.Allowed {
+				writeError(w, http.StatusForbidden, ErrCodeForbidden,
+					"You don't have permission to assign GCP service accounts in this grove", nil)
+				return
+			}
+		}
+
+		sa, err := s.store.GetGCPServiceAccount(ctx, req.GCPIdentity.ServiceAccountID)
+		if err != nil {
+			if err == store.ErrNotFound {
+				ValidationError(w, "GCP service account not found", nil)
+				return
+			}
+			writeErrorFromErr(w, err, "")
+			return
+		}
+		if sa.ScopeID != groveID {
+			ValidationError(w, "GCP service account does not belong to this grove", nil)
+			return
+		}
+		if !sa.Verified {
+			ValidationError(w, "GCP service account is not verified; verify it before assigning to agents", nil)
+			return
+		}
+		resolvedGCPSA = sa
+	}
+
 	// Check if the agent already exists (e.g. created via "scion create" for later start).
 	// If it exists in "created" status, start it instead of creating a duplicate.
 	// If it doesn't exist, fall through to create it.
@@ -501,6 +565,28 @@ func (s *Server) createAgentInGrove(
 	}
 
 	agent.AppliedConfig = s.buildAppliedConfig(req, harnessConfig, creatorName)
+
+	// Populate GCP identity in applied config
+	if req.GCPIdentity != nil {
+		switch req.GCPIdentity.MetadataMode {
+		case store.GCPMetadataModeAssign:
+			agent.AppliedConfig.GCPIdentity = &store.GCPIdentityConfig{
+				MetadataMode:        store.GCPMetadataModeAssign,
+				ServiceAccountID:    resolvedGCPSA.ID,
+				ServiceAccountEmail: resolvedGCPSA.Email,
+				ProjectID:           resolvedGCPSA.ProjectID,
+			}
+		case store.GCPMetadataModePassthrough:
+			agent.AppliedConfig.GCPIdentity = &store.GCPIdentityConfig{
+				MetadataMode: store.GCPMetadataModePassthrough,
+			}
+		case store.GCPMetadataModeBlock:
+			agent.AppliedConfig.GCPIdentity = &store.GCPIdentityConfig{
+				MetadataMode: store.GCPMetadataModeBlock,
+			}
+		}
+	}
+
 	if req.Config != nil {
 		agent.Image = req.Config.Image
 		if req.Config.Detached != nil {

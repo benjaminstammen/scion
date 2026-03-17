@@ -322,6 +322,16 @@ type RemoteAgentConfig struct {
 	// When set, the runtime broker skips workspace mounting and injects env vars
 	// so sciontool can clone the repo inside the container.
 	GitClone *api.GitCloneConfig `json:"gitClone,omitempty"`
+
+	// GCPIdentity holds the GCP identity assignment for the agent.
+	GCPIdentity *RemoteGCPIdentityConfig `json:"gcpIdentity,omitempty"`
+}
+
+// RemoteGCPIdentityConfig holds GCP identity configuration sent from Hub to Broker.
+type RemoteGCPIdentityConfig struct {
+	MetadataMode string `json:"metadata_mode"`        // "block", "passthrough", "assign"
+	SAEmail      string `json:"sa_email,omitempty"`   // Service account email
+	ProjectID    string `json:"project_id,omitempty"` // GCP project ID
 }
 
 // RemoteAgentResponse is the response from creating an agent on a remote runtime broker.
