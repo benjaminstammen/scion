@@ -95,7 +95,8 @@ type Server struct {
 	fetchInFlight bool
 	fetchDone    chan struct{}
 
-	cancel context.CancelFunc
+	cancel              context.CancelFunc
+	iptablesConfigured  bool // whether iptables redirect was successfully set up
 }
 
 type cachedAccessToken struct {
@@ -148,6 +149,17 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Set up iptables interception for Docker runtime.
+	// This redirects traffic to 169.254.169.254:80 to the local sidecar,
+	// ensuring tools that hardcode the metadata IP are intercepted.
+	if err := setupIPTablesRedirect(s.config.Port); err != nil {
+		// Non-fatal: iptables may not be available (no NET_ADMIN cap, non-Docker runtime).
+		// The GCE_METADATA_HOST env var is the primary mechanism.
+		log.Debug("iptables interception not available: %v", err)
+	} else {
+		s.iptablesConfigured = true
+	}
+
 	// Start proactive refresh if in assign mode
 	if s.config.Mode == "assign" {
 		go s.proactiveRefreshLoop(ctx)
@@ -155,6 +167,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 	go func() {
 		<-ctx.Done()
+		if s.iptablesConfigured {
+			cleanupIPTablesRedirect(s.config.Port)
+		}
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		s.srv.Shutdown(shutdownCtx)

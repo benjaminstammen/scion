@@ -67,6 +67,9 @@ type Client interface {
 	// ScheduledEvents returns the scheduled event operations interface scoped to a grove.
 	ScheduledEvents(groveID string) ScheduledEventService
 
+	// GCPServiceAccounts returns the GCP service account operations interface scoped to a grove.
+	GCPServiceAccounts(groveID string) GCPServiceAccountService
+
 	// Health checks API availability.
 	Health(ctx context.Context) (*HealthResponse, error)
 }
@@ -177,6 +180,11 @@ func (c *client) Notifications() NotificationService {
 // ScheduledEvents returns the scheduled event operations interface scoped to a grove.
 func (c *client) ScheduledEvents(groveID string) ScheduledEventService {
 	return &scheduledEventService{c: c, groveID: groveID}
+}
+
+// GCPServiceAccounts returns the GCP service account operations interface scoped to a grove.
+func (c *client) GCPServiceAccounts(groveID string) GCPServiceAccountService {
+	return &gcpServiceAccountService{c: c, groveID: groveID}
 }
 
 // Health checks API availability.

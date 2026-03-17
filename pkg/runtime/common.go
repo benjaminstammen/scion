@@ -310,6 +310,11 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 		addArg("--mount", "type=tmpfs,destination=/repo-root/.scion")
 	}
 
+	// Add NET_ADMIN capability for iptables-based metadata server interception
+	if config.MetadataInterception {
+		addArg("--cap-add", "NET_ADMIN")
+	}
+
 	if len(fuseMounts) > 0 {
 		addArg("--cap-add", "SYS_ADMIN")
 		addArg("--device", "/dev/fuse")

@@ -43,9 +43,10 @@ type RunConfig struct {
 	Resources        *api.ResourceSpec
 	Kubernetes      *api.KubernetesConfig
 	GitClone        *api.GitCloneConfig
-	SharedDirs      []api.SharedDir
-	BrokerMode      bool
-	Debug           bool
+	SharedDirs           []api.SharedDir
+	BrokerMode           bool
+	Debug                bool
+	MetadataInterception bool // Add NET_ADMIN cap for iptables-based metadata server interception
 }
 
 type Runtime interface {

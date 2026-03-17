@@ -689,9 +689,10 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}(),
 		GitClone: opts.GitClone,
 		SharedDirs: effectiveSharedDirs,
-		BrokerMode: opts.BrokerMode,
-		Debug:      util.DebugEnabled(),
-		Resume:     opts.Resume,
+		BrokerMode:           opts.BrokerMode,
+		Debug:                util.DebugEnabled(),
+		Resume:               opts.Resume,
+		MetadataInterception: hasMetadataInterception(agentEnv),
 		Labels: map[string]string{
 			"scion.agent":          "true",
 			"scion.name":           api.Slugify(opts.Name),
@@ -947,4 +948,15 @@ func authFileKind(name, target string) string {
 	default:
 		return ""
 	}
+}
+
+// hasMetadataInterception checks if the agent env vars include metadata server
+// configuration that requires iptables interception (assign or block mode).
+func hasMetadataInterception(env []string) bool {
+	for _, e := range env {
+		if strings.HasPrefix(e, "SCION_METADATA_MODE=assign") || strings.HasPrefix(e, "SCION_METADATA_MODE=block") {
+			return true
+		}
+	}
+	return false
 }
