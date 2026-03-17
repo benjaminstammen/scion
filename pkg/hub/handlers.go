@@ -144,18 +144,30 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return metrics snapshot if available
+	// Build a combined metrics response
+	type combinedMetrics struct {
+		Broker *MetricsSnapshot         `json:"broker,omitempty"`
+		GCP    *GCPTokenMetricsSnapshot `json:"gcp,omitempty"`
+	}
+
+	var combined combinedMetrics
+
 	if s.metrics != nil {
-		snapshot := s.metrics.GetSnapshot()
-		writeJSON(w, http.StatusOK, snapshot)
+		combined.Broker = s.metrics.GetSnapshot()
+	}
+	if s.gcpTokenMetrics != nil {
+		combined.GCP = s.gcpTokenMetrics.GetSnapshot()
+	}
+
+	if combined.Broker == nil && combined.GCP == nil {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status": "no_metrics",
+			"reason": "metrics not configured",
+		})
 		return
 	}
 
-	// No metrics available
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "no_metrics",
-		"reason": "metrics not configured",
-	})
+	writeJSON(w, http.StatusOK, combined)
 }
 
 // ============================================================================
