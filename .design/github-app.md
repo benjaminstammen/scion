@@ -924,17 +924,17 @@ This is comparable to installing any third-party GitHub App (CI systems, code re
 7. ✅ Token file cleanup on agent exit; initial token written to file at startup.
 8. ✅ Unit tests: Hub handler (auth, self-access, no-installation), client (RefreshGitHubToken, token file I/O, refresh loop, env helpers).
 
-### Phase 4: Web UI, Health Monitoring, and Polish
+### Phase 4: Web UI, Health Monitoring, and Polish ✅ COMPLETE
 
-1. Hub admin page: GitHub App configuration, webhook test, install link, installation list, permission sync.
-2. Grove settings tab: GitHub App status section with state indicators and remediation actions.
-3. Grove creation flow with auto-discovery.
-4. Implement app permission sync (`POST /api/v1/github-app/sync-permissions`).
-5. Implement periodic health check loop for installations (§6.5).
-6. Grove owner notifications for status transitions (via Hub notification system).
-7. Commit attribution configuration (bot/custom/co-authored).
-8. Rate limit monitoring and warning system.
-9. Documentation: setup guide, webhook troubleshooting, private key and webhook secret rotation runbook.
+1. ✅ Hub admin page: GitHub App configuration tab in admin server config with app details, installation list, rate limit display, discover and sync-permissions actions.
+2. ✅ Grove settings tab: GitHub App status section with state indicator dots (ok/degraded/error/unchecked), permission badges, discover and remove installation actions.
+3. ✅ Grove creation flow with auto-discovery via `discoverGitHubInstallation()` in grove settings UI and existing `handleGitHubAppDiscover` endpoint.
+4. ✅ Implement app permission sync (`POST /api/v1/github-app/sync-permissions`) — iterates all installations, fetches current permissions from GitHub, updates grove records.
+5. ✅ Implement periodic health check loop for installations (§6.5) — registered via `Scheduler.RegisterRecurring()`, runs every 6h (no webhooks) or 24h (with webhooks).
+6. ✅ Grove owner notifications for status transitions — `EventPublisher.PublishGroveUpdated()` called on installation changes, repo additions/removals, status updates, and token minting.
+7. ✅ Commit attribution configuration (bot/custom/co-authored) — `GitIdentityConfig` model, `git_identity` column (migration V36), `GET/PUT/DELETE /api/v1/groves/{id}/git-identity` endpoints.
+8. ✅ Rate limit monitoring and warning system — `RateLimitInfo` tracked on all GitHub API calls, warning logged when below 20% remaining, exposed via `GET /api/v1/github-app` response and admin UI.
+9. ✅ Documentation: setup guide (`.design/docs/github-app-setup.md`), webhook troubleshooting, private key and webhook secret rotation runbook (`.design/docs/github-app-rotation.md`).
 
 ---
 
