@@ -176,7 +176,9 @@ User=scion
 Group=scion
 WorkingDirectory=%s
 EnvironmentFile=/home/scion/.scion/hub.env
-Environment=\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"
+Environment=\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/google-cloud-sdk/bin\"
+Environment=\"HOME=/home/scion\"
+Environment=\"USE_GKE_GCLOUD_AUTH_PLUGIN=True\"
 # Use journald for log management
 StandardOutput=journal
 StandardError=journal
