@@ -374,9 +374,10 @@ func (s *Server) handleGitHubAppSetup(w http.ResponseWriter, r *http.Request) {
 	// Auto-match groves
 	matchedGroves := s.matchGrovesToInstallation(ctx, installation)
 
-	// Redirect to the admin config page's GitHub App tab so the user sees
-	// the result in context. Fall back to JSON if no web UI is available.
-	http.Redirect(w, r, "/admin/config#github-app", http.StatusFound)
+	// Redirect to the GitHub App setup page so the user can see their groves
+	// and configure installations. Pass the installation ID for context.
+	redirectURL := fmt.Sprintf("/github-app/installed?installation_id=%d", installationID)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 
 	_ = matchedGroves // consumed by matchGrovesToInstallation side effects
 }
