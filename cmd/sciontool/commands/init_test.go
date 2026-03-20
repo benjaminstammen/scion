@@ -310,10 +310,16 @@ func TestBuildAuthenticatedURL(t *testing.T) {
 			expected: "https://oauth2:tok@github.example.com:8443/org/repo.git",
 		},
 		{
-			name:     "non-parseable URL returns as-is",
-			cloneURL: "not-a-url",
+			name:     "schemeless URL gets https prefix added with token",
+			cloneURL: "github.com/org/repo",
 			token:    "ghp_abc",
-			expected: "not-a-url",
+			expected: "https://oauth2:ghp_abc@github.com/org/repo",
+		},
+		{
+			name:     "schemeless URL gets https prefix added without token",
+			cloneURL: "github.com/org/repo",
+			token:    "",
+			expected: "https://github.com/org/repo",
 		},
 	}
 

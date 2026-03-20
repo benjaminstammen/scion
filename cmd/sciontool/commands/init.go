@@ -1126,14 +1126,21 @@ func sanitizeGitOutput(output, token string) string {
 // buildAuthenticatedURL constructs an HTTPS URL with embedded OAuth2 credentials.
 // If no token is provided, the original URL is returned unchanged.
 func buildAuthenticatedURL(cloneURL, token string) string {
-	if token == "" {
-		return cloneURL
+	// Ensure the URL has an https:// scheme. The clone URL may arrive
+	// without a scheme if it was stored from raw user input (e.g.
+	// "github.com/org/repo" instead of "https://github.com/org/repo").
+	normalized := cloneURL
+	if !strings.Contains(normalized, "://") {
+		normalized = "https://" + normalized
 	}
 
-	parsed, err := url.Parse(cloneURL)
+	if token == "" {
+		return normalized
+	}
+
+	parsed, err := url.Parse(normalized)
 	if err != nil || parsed.Scheme == "" {
-		// If URL can't be parsed, return as-is (git will handle the error)
-		return cloneURL
+		return normalized
 	}
 
 	parsed.User = url.UserPassword("oauth2", token)

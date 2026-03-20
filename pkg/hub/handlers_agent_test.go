@@ -1610,6 +1610,57 @@ func TestCreateAgent_GitGroveCloneURLFallback(t *testing.T) {
 	assert.Equal(t, 1, persisted.AppliedConfig.GitClone.Depth)
 }
 
+func TestCreateAgent_GitGroveSchemelessCloneURL(t *testing.T) {
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
+	srv, s, _ := setupCreateAgentServer(t, disp)
+	ctx := context.Background()
+
+	// Create a grove where clone-url label is set but missing https:// scheme
+	// (as can happen when the web UI stores raw user input).
+	gitGrove := &store.Grove{
+		ID:        "grove-git-schemeless",
+		Name:      "Git Grove Schemeless",
+		Slug:      "git-grove-schemeless",
+		GitRemote: "github.com/example/schemeless-repo",
+		Labels: map[string]string{
+			"scion.dev/clone-url":      "github.com/example/schemeless-repo",
+			"scion.dev/default-branch": "main",
+		},
+		DefaultRuntimeBrokerID: "broker-create",
+	}
+	require.NoError(t, s.CreateGrove(ctx, gitGrove))
+
+	provider := &store.GroveProvider{
+		GroveID:    gitGrove.ID,
+		BrokerID:   "broker-create",
+		BrokerName: "Create Test Broker",
+		Status:     store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.AddGroveProvider(ctx, provider))
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
+		Name:    "schemeless-url-agent",
+		GroveID: gitGrove.ID,
+		Task:    "test schemeless",
+	})
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp CreateAgentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Agent)
+
+	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
+	require.NoError(t, err)
+	require.NotNil(t, persisted.AppliedConfig, "AppliedConfig should be set")
+	require.NotNil(t, persisted.AppliedConfig.GitClone, "GitClone should be populated")
+
+	assert.Equal(t, "https://github.com/example/schemeless-repo.git", persisted.AppliedConfig.GitClone.URL,
+		"schemeless clone-url label should be normalized to https:// with .git suffix")
+	assert.Equal(t, "main", persisted.AppliedConfig.GitClone.Branch)
+	assert.Equal(t, 1, persisted.AppliedConfig.GitClone.Depth)
+}
+
 func TestCreateAgent_GitGroveDefaultBranchFallback(t *testing.T) {
 	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, _ := setupCreateAgentServer(t, disp)

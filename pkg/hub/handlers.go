@@ -7062,6 +7062,11 @@ func (s *Server) populateAgentConfig(agent *store.Agent, grove *store.Grove, res
 		cloneURL := grove.Labels["scion.dev/clone-url"]
 		if cloneURL == "" {
 			cloneURL = "https://" + grove.GitRemote + ".git"
+		} else {
+			// Normalize: the label may have been stored without a scheme
+			// (e.g. "github.com/org/repo" from the web UI). Ensure it is
+			// always a valid HTTPS clone URL.
+			cloneURL = util.ToHTTPSCloneURL(cloneURL)
 		}
 		defaultBranch := grove.Labels["scion.dev/default-branch"]
 		if defaultBranch == "" {

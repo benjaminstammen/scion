@@ -262,10 +262,17 @@ export class ScionPageGroveCreate extends LitElement {
 
       if (this.mode === 'git') {
         const trimmedUrl = this.gitRemote.trim();
+        // Build an HTTPS clone URL from whatever the user entered.
+        // Strip known schemes/prefixes, then re-add https:// and .git.
+        let cloneUrl = trimmedUrl
+          .replace(/^(https?:\/\/|ssh:\/\/|git:\/\/|git@)/, '')
+          .replace(':', '/') // git@host:org/repo → host/org/repo
+          .replace(/\.git$/, '');
+        cloneUrl = `https://${cloneUrl}.git`;
         body.gitRemote = trimmedUrl;
         body.labels = {
           'scion.dev/default-branch': this.branch.trim() || 'main',
-          'scion.dev/clone-url': trimmedUrl,
+          'scion.dev/clone-url': cloneUrl,
           'scion.dev/source-url': trimmedUrl,
         };
       }
