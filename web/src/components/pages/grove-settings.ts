@@ -1077,6 +1077,7 @@ export class ScionPageGroveSettings extends LitElement {
   private renderGitHubAppSection() {
     if (!this.grove?.gitRemote) return '';
     if (!this.isGitHubRemote()) return '';
+    if (!this.githubAppLoading && !this.githubAppConfigured) return '';
 
     const status = this.githubAppStatus;
     const hasInstallation = this.githubAppInstallationId != null;
