@@ -66,6 +66,14 @@ func (m *mockBrokerPlugin) GetInfo() (*PluginInfo, error) {
 	}, nil
 }
 
+func (m *mockBrokerPlugin) HealthCheck() (*HealthStatus, error) {
+	return &HealthStatus{
+		Status:  "healthy",
+		Message: "mock broker is healthy",
+		Details: map[string]string{"test": "true"},
+	}, nil
+}
+
 // startTestRPCServer starts an RPC server with the mock broker plugin and returns a client.
 func startTestBrokerRPCServer(t *testing.T, impl MessageBrokerPluginInterface) *BrokerRPCClient {
 	t.Helper()
@@ -148,6 +156,17 @@ func TestBrokerRPC_GetInfo(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test-broker", info.Name)
 	assert.Equal(t, "1.0.0", info.Version)
+}
+
+func TestBrokerRPC_HealthCheck(t *testing.T) {
+	mock := &mockBrokerPlugin{}
+	client := startTestBrokerRPCServer(t, mock)
+
+	status, err := client.HealthCheck()
+	require.NoError(t, err)
+	assert.Equal(t, "healthy", status.Status)
+	assert.Equal(t, "mock broker is healthy", status.Message)
+	assert.Equal(t, "true", status.Details["test"])
 }
 
 func TestBrokerPluginAdapter_Publish(t *testing.T) {

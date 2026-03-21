@@ -21,6 +21,7 @@ package refbroker
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -29,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GoogleCloudPlatform/scion/pkg/apiclient"
 	"github.com/GoogleCloudPlatform/scion/pkg/messages"
 	"github.com/GoogleCloudPlatform/scion/pkg/plugin"
 )
@@ -65,7 +67,8 @@ type RefBroker struct {
 
 	// Hub API callback config (set via Configure)
 	hubURL     string // e.g. "http://localhost:8080"
-	hmacKey    string // HMAC key for hub API auth
+	hmacKey    string // HMAC key for hub API auth (base64-encoded)
+	brokerID   string // Broker ID for HMAC signing
 	pluginName string // X-Scion-Plugin-Name header value
 
 	httpClient *http.Client
@@ -101,7 +104,7 @@ func New(log *slog.Logger) *RefBroker {
 }
 
 // Configure sets up the reference broker from the provided config map.
-// Recognized keys: hub_url, hmac_key, plugin_name.
+// Recognized keys: hub_url, hmac_key, broker_id, plugin_name.
 func (b *RefBroker) Configure(config map[string]string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -112,12 +115,16 @@ func (b *RefBroker) Configure(config map[string]string) error {
 	if v, ok := config["hmac_key"]; ok {
 		b.hmacKey = v
 	}
+	if v, ok := config["broker_id"]; ok {
+		b.brokerID = v
+	}
 	if v, ok := config["plugin_name"]; ok {
 		b.pluginName = v
 	}
 
 	b.log.Info("Reference broker configured",
 		"hub_url", b.hubURL,
+		"broker_id", b.brokerID,
 		"plugin_name", b.pluginName,
 	)
 	return nil
@@ -213,6 +220,8 @@ func (b *RefBroker) deliverInbound(topic string, msg *messages.StructuredMessage
 
 	b.mu.RLock()
 	hubURL := b.hubURL
+	hmacKey := b.hmacKey
+	brokerID := b.brokerID
 	pluginName := b.pluginName
 	b.mu.RUnlock()
 
@@ -237,8 +246,26 @@ func (b *RefBroker) deliverInbound(topic string, msg *messages.StructuredMessage
 		b.log.Error("Failed to create inbound request", "error", err)
 		return
 	}
+	req.ContentLength = int64(len(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Scion-Plugin-Name", pluginName)
+
+	// Sign the request with HMAC if broker credentials are configured
+	if brokerID != "" && hmacKey != "" {
+		secretKey, decErr := decodeBase64(hmacKey)
+		if decErr != nil {
+			b.log.Error("Failed to decode HMAC key", "error", decErr)
+			return
+		}
+		auth := &apiclient.HMACAuth{
+			BrokerID:  brokerID,
+			SecretKey: secretKey,
+		}
+		if signErr := auth.ApplyAuth(req); signErr != nil {
+			b.log.Error("Failed to sign inbound request", "error", signErr)
+			return
+		}
+	}
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
@@ -308,11 +335,48 @@ func (b *RefBroker) GetInfo() (*plugin.PluginInfo, error) {
 	}, nil
 }
 
+// HealthCheck returns the runtime health of the reference broker.
+func (b *RefBroker) HealthCheck() (*plugin.HealthStatus, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.closed {
+		return &plugin.HealthStatus{
+			Status:  "unhealthy",
+			Message: "broker is closed",
+		}, nil
+	}
+
+	details := map[string]string{
+		"subscriptions": fmt.Sprintf("%d", len(b.subs)),
+	}
+	if b.hubURL != "" {
+		details["hub_url"] = b.hubURL
+	}
+
+	return &plugin.HealthStatus{
+		Status:  "healthy",
+		Message: "in-memory broker operational",
+		Details: details,
+	}, nil
+}
+
 // PublishExternal publishes a message as if it came from an external source
 // (i.e., without the origin marker). This is used by the REPL and tests to
 // simulate external messages arriving into the broker.
 func (b *RefBroker) PublishExternal(topic string, msg *messages.StructuredMessage) error {
 	return b.Publish(context.Background(), topic, msg)
+}
+
+// decodeBase64 decodes a base64-encoded string, trying standard then URL-safe encoding.
+func decodeBase64(s string) ([]byte, error) {
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	if b, err := base64.URLEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return nil, fmt.Errorf("invalid base64 encoding")
 }
 
 // subjectMatchesPattern checks if a subject matches a NATS-style pattern.

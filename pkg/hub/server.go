@@ -1663,6 +1663,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/brokers/join", s.handleBrokerJoin)
 	s.mux.HandleFunc("/api/v1/brokers/", s.handleBrokerByIDRoutes)
 
+	// Broker plugin inbound message delivery
+	s.mux.HandleFunc("/api/v1/broker/inbound", s.handleBrokerInbound)
+
 	// Admin system endpoints
 	s.mux.HandleFunc("/api/v1/admin/maintenance", s.handleAdminMaintenance)
 	s.mux.HandleFunc("/api/v1/admin/scheduler", s.handleAdminScheduler)

@@ -55,10 +55,38 @@ type GetInfoResponse struct {
 	Info PluginInfo
 }
 
+// HealthCheckResponse holds the response from HealthCheck RPC call.
+type HealthCheckResponse struct {
+	Status HealthStatus
+}
+
+// HealthStatus represents the runtime health of a plugin.
+type HealthStatus struct {
+	// Status is the overall health: "healthy", "degraded", or "unhealthy".
+	Status string
+
+	// Message is a human-readable description of the current state.
+	Message string
+
+	// Details contains plugin-specific health details (e.g., connection state,
+	// last send/receive timestamps, buffer utilization).
+	Details map[string]string
+}
+
 // --- Plugin interface (implemented by the plugin binary) ---
 
 // MessageBrokerPluginInterface defines the methods that a broker plugin must implement.
 // This is the interface that plugin authors implement on the plugin side.
+//
+// Subscribe pattern conventions:
+//
+// The pattern parameter uses NATS-style wildcards ("*" matches one token,
+// ">" matches the remainder). When the host calls Subscribe(">") or
+// Subscribe("*"), this means "start all inbound delivery." Plugins that
+// operate on non-pub/sub transports (WebSocket streams, webhooks, polling
+// APIs) and do not support topic filtering should accept any pattern and
+// start their global listener. The pattern is a hint — plugins may ignore
+// it when their transport does not support filtering.
 type MessageBrokerPluginInterface interface {
 	Configure(config map[string]string) error
 	Publish(ctx context.Context, topic string, msg *messages.StructuredMessage) error
@@ -66,6 +94,11 @@ type MessageBrokerPluginInterface interface {
 	Unsubscribe(pattern string) error
 	Close() error
 	GetInfo() (*PluginInfo, error)
+	// HealthCheck returns the runtime health of the plugin.
+	// Plugins that do not support health checks may return a nil HealthStatus.
+	// The host gracefully handles plugins that do not implement this method
+	// (pre-HealthCheck plugins) by returning a default "unknown" status.
+	HealthCheck() (*HealthStatus, error)
 }
 
 // --- go-plugin Plugin definition ---
@@ -124,6 +157,17 @@ func (s *BrokerRPCServer) GetInfo(_ struct{}, resp *GetInfoResponse) error {
 	return nil
 }
 
+func (s *BrokerRPCServer) HealthCheck(_ struct{}, resp *HealthCheckResponse) error {
+	status, err := s.Impl.HealthCheck()
+	if err != nil {
+		return err
+	}
+	if status != nil {
+		resp.Status = *status
+	}
+	return nil
+}
+
 // --- RPC Client (runs in the host process) ---
 
 // BrokerRPCClient implements MessageBrokerPluginInterface by making RPC calls
@@ -165,6 +209,23 @@ func (c *BrokerRPCClient) GetInfo() (*PluginInfo, error) {
 		return nil, err
 	}
 	return &resp.Info, nil
+}
+
+// HealthCheck returns the runtime health of the plugin.
+// If the plugin does not implement HealthCheck (older protocol), a default
+// "unknown" status is returned instead of an error.
+func (c *BrokerRPCClient) HealthCheck() (*HealthStatus, error) {
+	var resp HealthCheckResponse
+	err := c.client.Call("Plugin.HealthCheck", struct{}{}, &resp)
+	if err != nil {
+		// Gracefully handle plugins that don't implement HealthCheck.
+		// net/rpc returns an error for unknown methods.
+		return &HealthStatus{
+			Status:  "unknown",
+			Message: "plugin does not support health checks",
+		}, nil
+	}
+	return &resp.Status, nil
 }
 
 // --- Host-side adapter: wraps BrokerRPCClient as broker.MessageBroker ---
