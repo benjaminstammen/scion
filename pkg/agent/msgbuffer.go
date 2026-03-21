@@ -15,6 +15,7 @@
 package agent
 
 import (
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -118,7 +119,12 @@ func (mb *MessageBuffer) flush(agentID string) {
 	if err := mb.deliverFunc(agentID, combined, false); err != nil {
 		// Delivery errors are logged rather than returned since flush runs
 		// asynchronously after the original Send() call has already returned.
-		util.Debugf("msgbuffer: delivery error for agent %s: %v", agentID, err)
+		// Log at warn level so failures are visible in production logs.
+		slog.Warn("msgbuffer: message delivery failed",
+			"agent_id", agentID,
+			"pending_count", len(pending),
+			"error", err,
+		)
 	}
 }
 

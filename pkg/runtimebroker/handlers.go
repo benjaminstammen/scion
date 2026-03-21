@@ -32,6 +32,7 @@ import (
 	"github.com/GoogleCloudPlatform/scion/pkg/gcp"
 	"github.com/GoogleCloudPlatform/scion/pkg/harness"
 	"github.com/GoogleCloudPlatform/scion/pkg/messages"
+	scionrt "github.com/GoogleCloudPlatform/scion/pkg/runtime"
 	"github.com/GoogleCloudPlatform/scion/pkg/templatecache"
 )
 
@@ -1082,7 +1083,10 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, id string) 
 		deliveryText = req.Message
 	}
 
-	if err := s.manager.Message(ctx, id, deliveryText, req.Interrupt); err != nil {
+	// Resolve the correct manager for this agent (may be on an auxiliary runtime like K8s)
+	mgr := s.resolveManagerForAgent(ctx, id)
+
+	if err := mgr.Message(ctx, id, deliveryText, req.Interrupt); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			NotFound(w, "Agent")
 			return
@@ -1125,7 +1129,10 @@ func (s *Server) execCommand(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 
-	output, err := s.runtime.Exec(ctx, id, req.Command)
+	// Resolve the correct runtime for this agent (may be on an auxiliary runtime like K8s)
+	rt := s.resolveRuntimeForAgent(ctx, id)
+
+	output, err := rt.Exec(ctx, id, req.Command)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			NotFound(w, "Agent")
@@ -1144,8 +1151,11 @@ func (s *Server) execCommand(w http.ResponseWriter, r *http.Request, id string) 
 func (s *Server) getLogs(w http.ResponseWriter, r *http.Request, id string) {
 	ctx := r.Context()
 
+	// Resolve the correct manager for this agent (may be on an auxiliary runtime like K8s)
+	mgr := s.resolveManagerForAgent(ctx, id)
+
 	// Try to read agent.log from the filesystem first (preferred source).
-	agents, err := s.manager.List(ctx, map[string]string{"scion.agent": "true"})
+	agents, err := mgr.List(ctx, map[string]string{"scion.agent": "true"})
 	if err != nil {
 		RuntimeError(w, "Failed to list agents: "+err.Error())
 		return
@@ -1177,8 +1187,9 @@ func (s *Server) getLogs(w http.ResponseWriter, r *http.Request, id string) {
 		// Fall through to container logs if agent.log not found
 	}
 
-	// Fallback: read container stdout logs
-	logs, err := s.runtime.GetLogs(ctx, id)
+	// Fallback: read container stdout logs (resolve runtime for auxiliary runtimes)
+	rt := s.resolveRuntimeForAgent(ctx, id)
+	logs, err := rt.GetLogs(ctx, id)
 	if err != nil {
 		RuntimeError(w, "Failed to get logs: "+err.Error())
 		return
@@ -1741,6 +1752,38 @@ func (s *Server) resolveManagerForAgent(ctx context.Context, id string) agent.Ma
 	// Default fallback — the agent may have already been removed or the
 	// runtime is genuinely the default one (e.g. pod already deleted).
 	return s.manager
+}
+
+// resolveRuntimeForAgent returns the appropriate runtime.Runtime for an
+// existing agent by checking the default runtime first, then falling back
+// to auxiliary runtimes. This is needed for operations that call runtime
+// methods directly (e.g. Exec, GetLogs) rather than going through the manager.
+func (s *Server) resolveRuntimeForAgent(ctx context.Context, id string) scionrt.Runtime {
+	slug := strings.ToLower(id)
+	filter := map[string]string{"scion.name": slug}
+
+	// Try the default manager first
+	agents, err := s.manager.List(ctx, filter)
+	if err == nil && len(agents) > 0 {
+		return s.runtime
+	}
+
+	// Fall back to auxiliary runtimes
+	s.auxiliaryRuntimesMu.RLock()
+	auxRuntimes := make(map[string]auxiliaryRuntime, len(s.auxiliaryRuntimes))
+	for k, v := range s.auxiliaryRuntimes {
+		auxRuntimes[k] = v
+	}
+	s.auxiliaryRuntimesMu.RUnlock()
+
+	for _, aux := range auxRuntimes {
+		auxAgents, auxErr := aux.Manager.List(ctx, filter)
+		if auxErr == nil && len(auxAgents) > 0 {
+			return aux.Runtime
+		}
+	}
+
+	return s.runtime
 }
 
 // resolveManagerForOpts returns the appropriate agent.Manager for the given

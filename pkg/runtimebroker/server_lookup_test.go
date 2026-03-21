@@ -364,6 +364,65 @@ func TestResolveManagerForAgent_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimeForAgent_DefaultRuntime(t *testing.T) {
+	mgr := &filteringMockManager{}
+	mgr.agents = []api.AgentInfo{
+		{
+			Name:   "myagent",
+			Labels: map[string]string{"scion.name": "myagent"},
+		},
+	}
+	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
+	srv := New(DefaultServerConfig(), mgr, rt)
+
+	result := srv.resolveRuntimeForAgent(context.Background(), "myagent")
+	if result != rt {
+		t.Error("expected default runtime to be returned")
+	}
+}
+
+func TestResolveRuntimeForAgent_FallbackToAuxiliary(t *testing.T) {
+	defaultMgr := &filteringMockManager{}
+	defaultMgr.agents = []api.AgentInfo{}
+
+	auxMgr := &filteringMockManager{}
+	auxMgr.agents = []api.AgentInfo{
+		{
+			Name:   "k8sagent",
+			Labels: map[string]string{"scion.name": "k8sagent"},
+		},
+	}
+
+	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
+	auxRt := &runtime.MockRuntime{NameFunc: func() string { return "kubernetes" }}
+	srv := New(DefaultServerConfig(), defaultMgr, rt)
+
+	srv.auxiliaryRuntimesMu.Lock()
+	srv.auxiliaryRuntimes["kubernetes"] = auxiliaryRuntime{
+		Runtime: auxRt,
+		Manager: auxMgr,
+	}
+	srv.auxiliaryRuntimesMu.Unlock()
+
+	result := srv.resolveRuntimeForAgent(context.Background(), "k8sagent")
+	if result != auxRt {
+		t.Error("expected auxiliary runtime to be returned for k8s agent")
+	}
+}
+
+func TestResolveRuntimeForAgent_NotFoundFallsBackToDefault(t *testing.T) {
+	defaultMgr := &filteringMockManager{}
+	defaultMgr.agents = []api.AgentInfo{}
+
+	rt := &runtime.MockRuntime{NameFunc: func() string { return "docker" }}
+	srv := New(DefaultServerConfig(), defaultMgr, rt)
+
+	result := srv.resolveRuntimeForAgent(context.Background(), "nonexistent")
+	if result != rt {
+		t.Error("expected default runtime when agent not found anywhere")
+	}
+}
+
 func TestRuntimeCommand_ReturnsRuntimeName(t *testing.T) {
 	rt := &runtime.MockRuntime{NameFunc: func() string { return "podman" }}
 	srv := New(DefaultServerConfig(), &mockManager{}, rt)
