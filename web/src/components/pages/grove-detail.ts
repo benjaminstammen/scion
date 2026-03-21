@@ -1313,9 +1313,19 @@ export class ScionPageGroveDetail extends LitElement {
     }
   }
 
+  private handleRefreshFiles(): void {
+    void this.loadTabFiles(this.activeFileTab);
+  }
+
   private renderFileActions() {
     const tabData = this.getTabData(this.activeFileTab);
     return html`
+      <sl-icon-button
+        name="arrow-clockwise"
+        label="Refresh file list"
+        ?disabled=${tabData.loading}
+        @click=${() => this.handleRefreshFiles()}
+      ></sl-icon-button>
       ${this.activeFileTab === 'workspace' && tabData.files.length > 0
         ? html`
             <sl-button
