@@ -474,6 +474,15 @@ export class ScionPageGroveDetail extends LitElement {
       color: var(--scion-primary, #3b82f6);
     }
 
+    .header-path a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .header-path a:hover {
+      color: var(--scion-primary, #3b82f6);
+    }
+
     .workspace-section {
       margin-top: 2rem;
       margin-bottom: 2rem;
@@ -665,6 +674,14 @@ export class ScionPageGroveDetail extends LitElement {
       }
     }
   `;
+
+  private static gitHubLink(remote: string): { url: string; display: string } | null {
+    const sshMatch = remote.match(/^git@github\.com:(.+?)(?:\.git)?$/);
+    if (sshMatch) return { url: `https://github.com/${sshMatch[1]}`, display: `github.com/${sshMatch[1]}` };
+    const httpsMatch = remote.match(/^https?:\/\/(github\.com\/.+?)(?:\.git)?$/);
+    if (httpsMatch) return { url: `https://${httpsMatch[1]}`, display: httpsMatch[1] };
+    return null;
+  }
 
   private boundOnAgentsUpdated = this.onAgentsUpdated.bind(this);
   private boundOnGrovesUpdated = this.onGrovesUpdated.bind(this);
@@ -1193,7 +1210,14 @@ export class ScionPageGroveDetail extends LitElement {
             ${this.renderGroveIcon()}
             <h1>${this.grove.name}${this.renderLinkedBadge()}</h1>
           </div>
-          <div class="header-path">${this.grove.gitRemote || (this.grove.groveType === 'linked' ? 'Linked grove' : 'Hub Workspace')}</div>
+          <div class="header-path">${(() => {
+            if (this.grove.gitRemote) {
+              const gh = ScionPageGroveDetail.gitHubLink(this.grove.gitRemote);
+              if (gh) return html`<a href="${gh.url}" target="_blank" rel="noopener noreferrer">${gh.display}</a>`;
+              return this.grove.gitRemote;
+            }
+            return this.grove.groveType === 'linked' ? 'Linked grove' : 'Hub Workspace';
+          })()}</div>
         </div>
         <div class="header-actions">
           ${can(this.agentScopeCapabilities, 'create')
