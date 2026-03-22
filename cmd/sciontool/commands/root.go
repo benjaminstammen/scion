@@ -27,8 +27,7 @@ Commands:
   init      Run as container init (PID 1) and spawn child processes
   version   Print version information
   hook      Process harness hook events from stdin
-  status    Update agent status (ask_user, task_completed)
-  daemon    Run hub communication daemon (future)`,
+  status    Update agent status (ask_user, task_completed)`,
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
