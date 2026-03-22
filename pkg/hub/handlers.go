@@ -1821,7 +1821,8 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	// Populate recipient ID from the resolved agent.
+	// Populate recipient slug and ID from the resolved agent.
+	structuredMsg.Recipient = "agent:" + agent.Slug
 	structuredMsg.RecipientID = agent.ID
 
 	if !s.checkBrokerAvailability(w, r, agent) {

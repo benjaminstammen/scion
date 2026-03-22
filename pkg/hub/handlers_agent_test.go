@@ -3139,7 +3139,7 @@ func TestHandleAgentMessage_PlainTextBuildsStructuredMessage(t *testing.T) {
 	assert.Equal(t, messages.Version, sm.Version)
 	assert.Equal(t, messages.TypeInstruction, sm.Type)
 	assert.Equal(t, "hello from the UI", sm.Msg)
-	assert.Equal(t, "agent:"+agent.ID, sm.Recipient)
+	assert.Equal(t, "agent:"+agent.Slug, sm.Recipient)
 	// Dev auth sets DisplayName to "Development User"
 	assert.Equal(t, "user:Development User", sm.Sender)
 	assert.NotEmpty(t, sm.Timestamp)
