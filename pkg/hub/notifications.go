@@ -354,7 +354,7 @@ func (nd *NotificationDispatcher) dispatchToAgent(ctx context.Context, sub *stor
 				"notification_id", notif.ID,
 			}
 			logAttrs = append(logAttrs, structuredMsg.LogAttrs()...)
-			nd.messageLog.Info("notification message dispatched", logAttrs...)
+			nd.messageLog.Debug("notification message dispatched", logAttrs...)
 		}
 	}
 
