@@ -208,8 +208,8 @@ func TestTimestampToTime(t *testing.T) {
 	}
 }
 
-func TestExtractFilesPlaceholder(t *testing.T) {
-	// When no file tool calls, should create placeholder structure
+func TestExtractFilesEmpty(t *testing.T) {
+	// When no file tool calls, files list should be empty (no placeholders)
 	entries := []GCPLogEntry{
 		{
 			LogName: "projects/test/logs/scion-agents",
@@ -220,7 +220,78 @@ func TestExtractFilesPlaceholder(t *testing.T) {
 		},
 	}
 	files := extractFiles(entries)
-	if len(files) == 0 {
-		t.Error("expected placeholder files when no tool calls found")
+	if len(files) != 0 {
+		t.Errorf("expected empty files when no tool calls found, got %d", len(files))
+	}
+}
+
+func TestExtractAgentsFromMessages(t *testing.T) {
+	// Agents referenced only in messages (no scion-agents entries) should be discovered
+	entries := []GCPLogEntry{
+		{
+			InsertID:  "1",
+			Timestamp: "2026-03-22T16:30:00.000Z",
+			LogName:   "projects/test/logs/scion-messages",
+			Labels: map[string]string{
+				"sender":       "agent:green-agent",
+				"sender_id":    "sender-uuid-1",
+				"recipient":    "agent:orchestrator",
+				"recipient_id": "recipient-uuid-2",
+			},
+			JSONPayload: map[string]any{
+				"sender":          "agent:green-agent",
+				"recipient":       "agent:orchestrator",
+				"sender_id":       "sender-uuid-1",
+				"recipient_id":    "recipient-uuid-2",
+				"msg_type":        "state-change",
+				"message_content": "test message",
+				"message":         "message dispatched",
+			},
+		},
+	}
+	agents := extractAgents(entries)
+	if len(agents) < 2 {
+		t.Fatalf("expected at least 2 agents from messages, got %d", len(agents))
+	}
+	nameSet := map[string]bool{}
+	for _, a := range agents {
+		nameSet[a.Name] = true
+	}
+	if !nameSet["green-agent"] {
+		t.Error("expected agent 'green-agent' discovered from message sender")
+	}
+	if !nameSet["orchestrator"] {
+		t.Error("expected agent 'orchestrator' discovered from message recipient")
+	}
+}
+
+func TestBackfillAgentCreateEvents(t *testing.T) {
+	// Agents without lifecycle events should get synthetic agent_create events
+	entries := []GCPLogEntry{
+		{
+			InsertID:  "1",
+			Timestamp: "2026-03-22T16:30:00.000Z",
+			LogName:   "projects/test/logs/scion-agents",
+			Labels:    map[string]string{"agent_id": "agent-1", "scion.harness": "gemini"},
+			JSONPayload: map[string]any{
+				"message": "agent.session.start",
+			},
+		},
+	}
+	agents := extractAgents(entries)
+	events := extractEvents(entries, agents)
+
+	// Should have a backfilled agent_create event before the session.start
+	var foundCreate bool
+	for _, e := range events {
+		if e.Type == "agent_create" {
+			if lce, ok := e.Data.(AgentLifecycleEvent); ok && lce.AgentID == "agent-1" {
+				foundCreate = true
+				break
+			}
+		}
+	}
+	if !foundCreate {
+		t.Error("expected backfilled agent_create event for agent without lifecycle events")
 	}
 }

@@ -44,13 +44,45 @@ export class AgentRing {
     }
   }
 
+  addAgent(info: AgentInfo): void {
+    if (this.agents.has(info.id)) return;
+    // Also check by name to avoid duplicates
+    for (const a of this.agents.values()) {
+      if (a.info.name === info.name) return;
+    }
+
+    const n = this.agents.size + 1;
+    const angle = (2 * Math.PI * (n - 1)) / n - Math.PI / 2;
+    this.agents.set(info.id, {
+      info,
+      angle,
+      x: this.centerX + Math.cos(angle) * this.ringRadius,
+      y: this.centerY + Math.sin(angle) * this.ringRadius,
+      phase: 'created',
+      activity: 'idle',
+      toolName: '',
+    });
+
+    // Recalculate all agent positions for even spacing
+    this.redistributeAgents();
+  }
+
+  private redistributeAgents(): void {
+    const agentList = Array.from(this.agents.values());
+    const n = agentList.length;
+    agentList.forEach((agent, i) => {
+      agent.angle = (2 * Math.PI * i) / n - Math.PI / 2;
+      agent.x = this.centerX + Math.cos(agent.angle) * this.ringRadius;
+      agent.y = this.centerY + Math.sin(agent.angle) * this.ringRadius;
+    });
+  }
+
   updateState(event: AgentStateEvent): void {
     // Find agent by ID or by name match
     let agent = this.agents.get(event.agentId);
     if (!agent) {
-      // Try finding by name in the agent list
       for (const a of this.agents.values()) {
-        if (a.info.id === event.agentId) {
+        if (a.info.name === event.agentId || a.info.id === event.agentId) {
           agent = a;
           break;
         }

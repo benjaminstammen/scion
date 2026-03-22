@@ -63,6 +63,51 @@ export class FileGraph {
     }, 2000);
   }
 
+  addFile(filePath: string): void {
+    if (this.nodes.has(filePath)) return;
+
+    const name = filePath.includes('/') ? filePath.substring(filePath.lastIndexOf('/') + 1) : filePath;
+    const parent = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '.';
+
+    // Ensure parent directories exist
+    if (parent !== '.' && !this.nodes.has(parent)) {
+      this.addFile(parent + '/'); // trigger directory creation
+    }
+
+    const isDir = filePath.endsWith('/');
+    const id = isDir ? filePath.slice(0, -1) : filePath;
+    if (this.nodes.has(id)) return;
+
+    const actualName = isDir ? (id.includes('/') ? id.substring(id.lastIndexOf('/') + 1) : id) : name;
+    const actualParent = isDir
+      ? (id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : '.')
+      : parent;
+
+    const node: GraphNode = {
+      id,
+      name: actualName,
+      isDir,
+      parent: actualParent,
+      highlighted: false,
+    };
+    this.nodes.set(id, node);
+
+    // Add to force graph
+    const { nodes: existingNodes, links: existingLinks } = this.graph.graphData();
+    const newNodes = [...existingNodes, node];
+    const newLinks = [...existingLinks];
+
+    if (actualParent !== '.' && this.nodes.has(actualParent)) {
+      newLinks.push({ source: actualParent, target: id });
+    }
+
+    this.graph.graphData({ nodes: newNodes, links: newLinks });
+  }
+
+  hasFile(filePath: string): boolean {
+    return this.nodes.has(filePath);
+  }
+
   highlightFile(filePath: string): void {
     const node = this.nodes.get(filePath);
     if (node) {

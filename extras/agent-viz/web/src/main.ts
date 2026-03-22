@@ -11,6 +11,7 @@ import type {
   AgentStateEvent,
   MessageEvent,
   FileEditEvent,
+  AgentLifecycleEvent,
 } from './types';
 
 // Main application state
@@ -113,20 +114,42 @@ function handleEvent(evt: PlaybackEvent): void {
     case 'message':
       messageRenderer.addMessage(evt.data as MessageEvent, agentRing);
       break;
-    case 'file_edit':
-      fileEditRenderer.addFileEdit(evt.data as FileEditEvent, agentRing, fileGraph);
+    case 'file_edit': {
+      const fileEvt = evt.data as FileEditEvent;
+      // Dynamically add file to graph if not already present
+      if (fileEvt.filePath && !fileGraph.hasFile(fileEvt.filePath)) {
+        fileGraph.addFile(fileEvt.filePath);
+      }
+      fileEditRenderer.addFileEdit(fileEvt, agentRing, fileGraph);
       break;
-    case 'agent_create':
-      // Agent already in manifest, just update state
+    }
+    case 'agent_create': {
+      const lifecycle = evt.data as AgentLifecycleEvent;
+      // Dynamically add agent to the ring if not already present
+      const agentInManifest = manifest?.agents.find(
+        (a) => a.id === lifecycle.agentId || a.name === lifecycle.name
+      );
+      if (agentInManifest) {
+        agentRing.addAgent(agentInManifest);
+      } else {
+        // Agent not in manifest — create an ad-hoc entry
+        agentRing.addAgent({
+          id: lifecycle.agentId,
+          name: lifecycle.name || lifecycle.agentId.substring(0, 8),
+          harness: 'unknown',
+          color: '#888',
+        });
+      }
       agentRing.updateState({
-        agentId: (evt.data as { agentId: string }).agentId,
+        agentId: lifecycle.agentId,
         phase: 'created',
         activity: 'idle',
       });
       break;
+    }
     case 'agent_destroy':
       agentRing.updateState({
-        agentId: (evt.data as { agentId: string }).agentId,
+        agentId: (evt.data as AgentLifecycleEvent).agentId,
         phase: 'stopped',
         activity: 'completed',
       });
