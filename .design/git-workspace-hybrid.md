@@ -493,12 +493,12 @@ The branch name field on the new-agent form adapts its default based on workspac
 
 ## 6. Implementation Plan
 
-### Phase 1: Data Model & API (Foundation)
+### Phase 1: Data Model & API (Foundation) ✅ Completed
 
-1. Add `workspaceMode` field to `CreateGroveRequest` and grove labels.
-2. Add `IsSharedWorkspace()` helper to grove model.
-3. Update `handleGroveWorkspace` to allow file operations on shared-workspace groves.
-4. Update `POST /api/v1/groves` handler to accept and store hybrid grove configuration.
+1. ✅ Add `workspaceMode` field to `CreateGroveRequest` and grove labels.
+2. ✅ Add `IsSharedWorkspace()` helper to grove model.
+3. ✅ Update `handleGroveWorkspace` to allow file operations on shared-workspace groves.
+4. ✅ Update `POST /api/v1/groves` handler to accept and store hybrid grove configuration.
 
 ### Phase 2: Host-Side Clone Infrastructure
 
