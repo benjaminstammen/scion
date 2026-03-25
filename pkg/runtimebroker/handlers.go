@@ -1166,21 +1166,37 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, id string) 
 	// Resolve the correct manager for this agent (may be on an auxiliary runtime like K8s)
 	mgr := s.resolveManagerForAgent(ctx, id)
 
-	if err := mgr.Message(ctx, id, deliveryText, req.Interrupt); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			NotFound(w, "Agent")
+	// Raw messages bypass the paste buffer and debounce, sending literal
+	// bytes via tmux send-keys with no trailing Enter keypresses.
+	isRaw := req.StructuredMessage != nil && req.StructuredMessage.Raw
+	if isRaw {
+		if err := mgr.MessageRaw(ctx, id, deliveryText); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				NotFound(w, "Agent")
+				return
+			}
+			RuntimeError(w, "Failed to send raw message: "+err.Error())
 			return
 		}
-		RuntimeError(w, "Failed to send message: "+err.Error())
-		return
+	} else {
+		if err := mgr.Message(ctx, id, deliveryText, req.Interrupt); err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				NotFound(w, "Agent")
+				return
+			}
+			RuntimeError(w, "Failed to send message: "+err.Error())
+			return
+		}
 	}
 
 	// Log message acceptance. Non-interrupt messages are buffered with a
 	// debounce delay before actual tmux delivery, so we log "accepted"
 	// rather than "delivered". Interrupt messages bypass the buffer and
-	// are delivered immediately.
+	// are delivered immediately. Raw messages are always delivered immediately.
 	logMsg := "message accepted (buffered)"
-	if req.Interrupt {
+	if isRaw {
+		logMsg = "message delivered (raw, unbuffered)"
+	} else if req.Interrupt {
 		logMsg = "message delivered (interrupt, unbuffered)"
 	}
 	logAttrs := []any{"agent_id", id}

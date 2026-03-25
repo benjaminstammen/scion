@@ -114,6 +114,10 @@ func (m *heartbeatMockManager) Message(ctx context.Context, agentID string, mess
 	return nil
 }
 
+func (m *heartbeatMockManager) MessageRaw(ctx context.Context, agentID string, keys string) error {
+	return nil
+}
+
 func (m *heartbeatMockManager) Watch(ctx context.Context, agentID string) (<-chan api.StatusEvent, error) {
 	return nil, nil
 }

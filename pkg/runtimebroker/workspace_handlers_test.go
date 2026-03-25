@@ -59,6 +59,10 @@ func (m *mockAgentManager) Message(ctx context.Context, name, message string, in
 	return nil
 }
 
+func (m *mockAgentManager) MessageRaw(ctx context.Context, name string, keys string) error {
+	return nil
+}
+
 func (m *mockAgentManager) Watch(ctx context.Context, name string) (<-chan api.StatusEvent, error) {
 	return nil, nil
 }

@@ -37,6 +37,7 @@ var msgAll bool
 var msgIn string
 var msgAt string
 var msgPlain bool
+var msgRaw bool
 var msgAttach []string
 var msgNotify bool
 
@@ -69,6 +70,22 @@ If --broadcast is used, the agent name can be omitted and the message will be se
 		}
 		if (msgIn != "" || msgAt != "") && (msgBroadcast || msgAll) {
 			return fmt.Errorf("--in/--at cannot be combined with --broadcast or --all")
+		}
+
+		// Validate --raw restrictions
+		if msgRaw {
+			if msgBroadcast || msgAll {
+				return fmt.Errorf("--raw cannot be combined with --broadcast or --all")
+			}
+			if msgPlain {
+				return fmt.Errorf("--raw and --plain are mutually exclusive")
+			}
+			if msgIn != "" || msgAt != "" {
+				return fmt.Errorf("--raw cannot be combined with --in or --at")
+			}
+			if len(msgAttach) > 0 {
+				return fmt.Errorf("--raw cannot be combined with --attach")
+			}
 		}
 
 		// Validate --notify restrictions
@@ -127,6 +144,12 @@ If --broadcast is used, the agent name can be omitted and the message will be se
 		rt := runtime.GetRuntime(grovePath, effectiveProfile)
 		mgr := agent.NewManager(rt)
 		defer mgr.Close()
+
+		// Raw mode: send literal bytes via send-keys with no trailing Enter
+		if msgRaw {
+			fmt.Printf("Sending raw keys to agent '%s'...\n", agentName)
+			return mgr.MessageRaw(ctx, agentName, message)
+		}
 
 		var targets []string
 		if msgBroadcast || msgAll {
@@ -227,6 +250,7 @@ func resolveSenderIdentity(hubCtx *HubContext) string {
 func buildStructuredMessage(sender, recipient, message string) *messages.StructuredMessage {
 	msg := messages.NewInstruction(sender, recipient, message)
 	msg.Plain = msgPlain
+	msg.Raw = msgRaw
 	msg.Urgent = msgInterrupt
 	msg.Broadcasted = msgBroadcast || msgAll
 	if len(msgAttach) > 0 {
@@ -409,6 +433,7 @@ func init() {
 	messageCmd.Flags().StringVar(&msgIn, "in", "", "Schedule message delivery after a duration (e.g. 30m, 1h)")
 	messageCmd.Flags().StringVar(&msgAt, "at", "", "Schedule message delivery at an absolute time (ISO 8601, e.g. 2026-02-28T14:00:00Z)")
 	messageCmd.Flags().BoolVar(&msgPlain, "plain", false, "Mark for plain-text delivery (message still flows as structured JSON internally)")
+	messageCmd.Flags().BoolVar(&msgRaw, "raw", false, "Send literal bytes via tmux send-keys with no trailing Enter (supports control keys like arrows and Escape)")
 	messageCmd.Flags().StringArrayVar(&msgAttach, "attach", nil, "Attach file path(s), repeatable")
 	messageCmd.Flags().BoolVar(&msgNotify, "notify", false, "Subscribe to notifications for the target agent (completed, waiting for input, etc.)")
 	rootCmd.AddCommand(messageCmd)

@@ -48,6 +48,11 @@ type Manager interface {
 	// Message sends a message to an agent's harness via tmux
 	Message(ctx context.Context, agentID string, message string, interrupt bool) error
 
+	// MessageRaw sends literal bytes to an agent's tmux session via send-keys
+	// with no trailing Enter keypresses, allowing control sequences like
+	// arrow keys and Escape to be used directly.
+	MessageRaw(ctx context.Context, agentID string, keys string) error
+
 	// Watch returns a channel of status updates for an agent
 	Watch(ctx context.Context, agentID string) (<-chan api.StatusEvent, error)
 
@@ -152,6 +157,36 @@ func (m *AgentManager) Message(ctx context.Context, agentID string, message stri
 	// fan-out) is coalesced into a single delivery, avoiding contention on
 	// the agent's tmux input.
 	m.msgBuffer.Send(agentID, message)
+	return nil
+}
+
+// MessageRaw sends literal bytes to an agent's tmux session via send-keys
+// with no trailing Enter keypresses. This bypasses the paste buffer and
+// debounce buffer, sending directly via tmux send-keys so that control
+// sequences (arrow keys, Escape, etc.) are interpreted by the terminal.
+func (m *AgentManager) MessageRaw(ctx context.Context, agentID string, keys string) error {
+	agents, err := m.List(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	var agent *api.AgentInfo
+	for _, a := range agents {
+		if a.Name == agentID || a.ContainerID == agentID || strings.TrimPrefix(a.Name, "/") == agentID {
+			agent = &a
+			break
+		}
+	}
+
+	if agent == nil {
+		return fmt.Errorf("agent '%s' not found or not running", agentID)
+	}
+
+	cmd := []string{"tmux", "send-keys", "-t", "scion:0", "--", keys}
+	if _, err := m.Runtime.Exec(ctx, agent.ContainerID, cmd); err != nil {
+		return fmt.Errorf("failed to send raw keys to agent '%s': %w", agent.Name, err)
+	}
+
 	return nil
 }
 

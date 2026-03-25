@@ -189,9 +189,9 @@ func TestLogAttrs(t *testing.T) {
 
 	attrs := m.LogAttrs()
 
-	// Should contain 9 key-value pairs (18 elements) when IDs are set
-	if len(attrs) != 18 {
-		t.Fatalf("LogAttrs() returned %d elements, want 18", len(attrs))
+	// Should contain 10 key-value pairs (20 elements) when IDs are set
+	if len(attrs) != 20 {
+		t.Fatalf("LogAttrs() returned %d elements, want 20", len(attrs))
 	}
 
 	// Verify key-value pairs
@@ -205,6 +205,7 @@ func TestLogAttrs(t *testing.T) {
 		"urgent":          true,
 		"broadcasted":     false,
 		"plain":           true,
+		"raw":             false,
 	}
 	for i := 0; i < len(attrs); i += 2 {
 		key, ok := attrs[i].(string)
@@ -234,9 +235,9 @@ func TestLogAttrsWithoutIDs(t *testing.T) {
 
 	attrs := m.LogAttrs()
 
-	// Without IDs, should contain 7 key-value pairs (14 elements)
-	if len(attrs) != 14 {
-		t.Fatalf("LogAttrs() returned %d elements, want 14", len(attrs))
+	// Without IDs, should contain 8 key-value pairs (16 elements)
+	if len(attrs) != 16 {
+		t.Fatalf("LogAttrs() returned %d elements, want 16", len(attrs))
 	}
 
 	// Verify sender_id and recipient_id are not present

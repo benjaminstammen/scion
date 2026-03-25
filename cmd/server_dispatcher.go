@@ -252,6 +252,15 @@ func (d *agentDispatcherAdapter) DispatchAgentDelete(ctx context.Context, hubAge
 // DispatchAgentMessage implements hub.AgentDispatcher.
 // It sends a message to an agent on the runtime broker.
 func (d *agentDispatcherAdapter) DispatchAgentMessage(ctx context.Context, hubAgent *store.Agent, message string, interrupt bool, structuredMsg *messages.StructuredMessage) error {
+	// Raw messages bypass the paste buffer and send literal bytes via send-keys
+	if structuredMsg != nil && structuredMsg.Raw {
+		deliveryText := messages.FormatForDelivery(structuredMsg)
+		if err := d.manager.MessageRaw(ctx, hubAgent.Name, deliveryText); err != nil {
+			return fmt.Errorf("failed to send raw message: %w", err)
+		}
+		return nil
+	}
+
 	// When a structured message is provided, format it for delivery
 	deliveryText := message
 	if structuredMsg != nil {
