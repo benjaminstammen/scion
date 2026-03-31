@@ -17,8 +17,9 @@
 /**
  * Admin Maintenance Operations page component
  *
- * Phase 1: Read-only display of maintenance operations and migrations.
- * Shows a checklist of one-time migrations and a list of routine operations.
+ * Displays maintenance operations and migrations with execution support.
+ * Phase 1: Read-only display of operations and migration checklist.
+ * Phase 2: Migration execution with dry-run support and status polling.
  */
 
 import { LitElement, html, css, nothing } from 'lit';
@@ -71,6 +72,21 @@ export class ScionPageAdminMaintenance extends LitElement {
 
   @state()
   private operations: MaintenanceOperationWithRun[] = [];
+
+  /** Key of migration being confirmed for execution via dialog. */
+  @state()
+  private runDialogKey: string | null = null;
+
+  /** Dry-run checkbox state in the run dialog. */
+  @state()
+  private runDialogDryRun = false;
+
+  /** Whether a migration run request is in-flight. */
+  @state()
+  private runInProgress = false;
+
+  /** Polling timer for running migrations. */
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   static override styles = css`
     :host {
@@ -189,6 +205,33 @@ export class ScionPageAdminMaintenance extends LitElement {
       gap: 0.25rem;
     }
 
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.75rem;
+    }
+
+    /* ── Result log ─────────────────────────────────────────────────── */
+
+    .result-log {
+      margin-top: 0.75rem;
+      font-family: var(--scion-font-mono, monospace);
+      font-size: 0.8125rem;
+      background: var(--scion-bg-subtle, #f1f5f9);
+      padding: 0.75rem 1rem;
+      border-radius: var(--scion-radius, 0.5rem);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+      color: var(--scion-text, #1e293b);
+    }
+
+    .result-error {
+      color: var(--sl-color-danger-700, #b91c1c);
+    }
+
     /* ── Status badges ──────────────────────────────────────────────── */
 
     .status-badge {
@@ -218,6 +261,21 @@ export class ScionPageAdminMaintenance extends LitElement {
     .status-badge.running {
       background: var(--sl-color-primary-100, #dbeafe);
       color: var(--sl-color-primary-700, #1d4ed8);
+    }
+
+    /* ── Dialog ──────────────────────────────────────────────────────── */
+
+    .dialog-body {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .dialog-body p {
+      margin: 0;
+      color: var(--scion-text-muted, #64748b);
+      font-size: 0.875rem;
+      line-height: 1.5;
     }
 
     /* ── Empty state ─────────────────────────────────────────────────── */
@@ -287,6 +345,11 @@ export class ScionPageAdminMaintenance extends LitElement {
     void this.loadData();
   }
 
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.stopPolling();
+  }
+
   private async loadData(): Promise<void> {
     this.loading = true;
     this.error = null;
@@ -300,11 +363,30 @@ export class ScionPageAdminMaintenance extends LitElement {
       const data = (await response.json()) as MaintenanceResponse;
       this.migrations = data.migrations ?? [];
       this.operations = data.operations ?? [];
+
+      // Start polling if any migration is currently running.
+      if (this.migrations.some((m) => m.status === 'running')) {
+        this.startPolling();
+      } else {
+        this.stopPolling();
+      }
     } catch (err) {
       console.error('Failed to load maintenance operations:', err);
       this.error = err instanceof Error ? err.message : 'Failed to load maintenance operations';
     } finally {
       this.loading = false;
+    }
+  }
+
+  private startPolling(): void {
+    if (this.pollTimer) return;
+    this.pollTimer = setInterval(() => void this.loadData(), 3000);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
   }
 
@@ -363,6 +445,68 @@ export class ScionPageAdminMaintenance extends LitElement {
     }
   }
 
+  // ── Migration execution ──────────────────────────────────────────
+
+  private openRunDialog(key: string): void {
+    this.runDialogKey = key;
+    this.runDialogDryRun = false;
+  }
+
+  private closeRunDialog(): void {
+    if (!this.runInProgress) {
+      this.runDialogKey = null;
+      this.runDialogDryRun = false;
+    }
+  }
+
+  private async executeRunMigration(): Promise<void> {
+    if (!this.runDialogKey) return;
+
+    this.runInProgress = true;
+    try {
+      const response = await apiFetch(
+        `/api/v1/admin/maintenance/migrations/${this.runDialogKey}/run`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            params: {
+              dryRun: this.runDialogDryRun,
+            },
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errMsg = await extractApiError(response, `HTTP ${response.status}`);
+        throw new Error(errMsg);
+      }
+
+      this.runDialogKey = null;
+      this.runDialogDryRun = false;
+
+      // Reload and start polling for status.
+      await this.loadData();
+      this.startPolling();
+    } catch (err) {
+      console.error('Failed to start migration:', err);
+      this.error = err instanceof Error ? err.message : 'Failed to start migration';
+    } finally {
+      this.runInProgress = false;
+    }
+  }
+
+  private parseMigrationResult(resultStr: string | undefined): { log?: string; error?: string; dryRun?: boolean } | null {
+    if (!resultStr) return null;
+    try {
+      return JSON.parse(resultStr) as { log?: string; error?: string; dryRun?: boolean };
+    } catch {
+      return null;
+    }
+  }
+
+  // ── Rendering ────────────────────────────────────────────────────
+
   override render() {
     return html`
       <div class="header">
@@ -375,6 +519,8 @@ export class ScionPageAdminMaintenance extends LitElement {
         : this.error
           ? this.renderError()
           : this.renderContent()}
+
+      ${this.renderRunDialog()}
     `;
   }
 
@@ -429,13 +575,19 @@ export class ScionPageAdminMaintenance extends LitElement {
   }
 
   private renderMigrationCard(m: MaintenanceOperation) {
+    const canRun = m.status === 'pending' || m.status === 'failed';
+    const isRunning = m.status === 'running';
+    const result = this.parseMigrationResult(m.result);
+
     return html`
       <div class="card">
         <div class="card-header">
-          <sl-icon
-            name="${this.statusIcon(m.status)}"
-            class="${m.status}"
-          ></sl-icon>
+          ${isRunning
+            ? html`<sl-spinner style="font-size: 1.25rem;"></sl-spinner>`
+            : html`<sl-icon
+                name="${this.statusIcon(m.status)}"
+                class="${m.status}"
+              ></sl-icon>`}
           <span class="card-title">${m.title}</span>
           <span class="status-badge ${m.status}">${m.status}</span>
         </div>
@@ -449,6 +601,35 @@ export class ScionPageAdminMaintenance extends LitElement {
             ? html`<span>By: ${m.startedBy}</span>`
             : nothing}
         </div>
+        ${result?.log
+          ? html`<div class="result-log ${result.error ? 'result-error' : ''}">${result.log}</div>`
+          : nothing}
+        ${result?.error && !result.log
+          ? html`<div class="result-log result-error">${result.error}</div>`
+          : nothing}
+        ${canRun || isRunning
+          ? html`
+              <div class="card-footer">
+                <div></div>
+                ${canRun
+                  ? html`
+                      <sl-button
+                        variant="primary"
+                        size="small"
+                        @click=${() => this.openRunDialog(m.key)}
+                      >
+                        <sl-icon slot="prefix" name="play-circle"></sl-icon>
+                        ${m.status === 'failed' ? 'Retry' : 'Run'}
+                      </sl-button>
+                    `
+                  : html`
+                      <sl-button size="small" disabled loading>
+                        Running...
+                      </sl-button>
+                    `}
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }
@@ -497,6 +678,48 @@ export class ScionPageAdminMaintenance extends LitElement {
               </div>
             `}
       </div>
+    `;
+  }
+
+  private renderRunDialog() {
+    if (!this.runDialogKey) return nothing;
+    const migration = this.migrations.find((m) => m.key === this.runDialogKey);
+    if (!migration) return nothing;
+
+    return html`
+      <sl-dialog
+        label="Run Migration"
+        open
+        @sl-request-close=${() => this.closeRunDialog()}
+      >
+        <div class="dialog-body">
+          <p><strong>${migration.title}</strong></p>
+          <p>${migration.description}</p>
+          <sl-checkbox
+            ?checked=${this.runDialogDryRun}
+            @sl-change=${(e: Event) => {
+              this.runDialogDryRun = (e.target as HTMLInputElement).checked;
+            }}
+          >
+            Dry run (preview changes without applying)
+          </sl-checkbox>
+        </div>
+        <sl-button
+          slot="footer"
+          variant="default"
+          @click=${() => this.closeRunDialog()}
+          ?disabled=${this.runInProgress}
+        >Cancel</sl-button>
+        <sl-button
+          slot="footer"
+          variant="primary"
+          ?loading=${this.runInProgress}
+          @click=${() => this.executeRunMigration()}
+        >
+          <sl-icon slot="prefix" name="play-circle"></sl-icon>
+          ${this.runDialogDryRun ? 'Dry Run' : 'Run Migration'}
+        </sl-button>
+      </sl-dialog>
     `;
   }
 }

@@ -535,18 +535,20 @@ type MaintenanceStore interface {
 
 ## 7. Rollout
 
-### Phase 1: Migration Tracking (This PR)
+### Phase 1: Migration Tracking -- COMPLETE
 
 - Add database table and seed the secret migration entry.
 - Add list/get API endpoints (read-only).
 - Add the web UI page with migration checklist (display only, no execution).
 - Add nav entry.
 
-### Phase 2: Migration Execution
+### Phase 2: Migration Execution -- COMPLETE
 
 - Add the `POST .../run` endpoint for migrations.
 - Implement the `SecretMigrationExecutor`.
-- Wire up the Run button in the UI with parameter dialog (dry-run checkbox, GCP project field).
+- Wire up the Run button in the UI with parameter dialog (dry-run checkbox).
+- Add `MaintenanceExecutor` interface for future operation executors.
+- Add status polling for running migrations.
 
 ### Phase 3: Routine Operations
 

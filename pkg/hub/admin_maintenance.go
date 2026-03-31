@@ -15,14 +15,18 @@
 package hub
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
 )
 
 // handleAdminMaintenanceOps handles routes under /api/v1/admin/maintenance/operations.
-// Phase 1: read-only list and get endpoints.
 func (s *Server) handleAdminMaintenanceOps(w http.ResponseWriter, r *http.Request) {
 	user := GetUserIdentityFromContext(r.Context())
 	if user == nil || user.Role() != "admin" {
@@ -46,6 +50,147 @@ func (s *Server) handleAdminMaintenanceOps(w http.ResponseWriter, r *http.Reques
 
 	// GET /api/v1/admin/maintenance/operations/{key}
 	s.getMaintenanceOperation(w, r, subPath)
+}
+
+// handleAdminMaintenanceMigrations handles routes under /api/v1/admin/maintenance/migrations/.
+// Supports POST /api/v1/admin/maintenance/migrations/{key}/run to execute a migration.
+func (s *Server) handleAdminMaintenanceMigrations(w http.ResponseWriter, r *http.Request) {
+	user := GetUserIdentityFromContext(r.Context())
+	if user == nil || user.Role() != "admin" {
+		Forbidden(w)
+		return
+	}
+
+	// Extract sub-path: /api/v1/admin/maintenance/migrations/{key}/run
+	subPath := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/maintenance/migrations/")
+	parts := strings.SplitN(subPath, "/", 2)
+	if len(parts) < 2 || parts[1] != "run" || parts[0] == "" {
+		writeError(w, http.StatusNotFound, ErrCodeNotFound, "Not found", nil)
+		return
+	}
+
+	key := parts[0]
+
+	if r.Method != http.MethodPost {
+		MethodNotAllowed(w)
+		return
+	}
+
+	s.executeMigration(w, r, key, user)
+}
+
+// executeMigration starts execution of a migration by key.
+func (s *Server) executeMigration(w http.ResponseWriter, r *http.Request, key string, user UserIdentity) {
+	ctx := r.Context()
+
+	// Look up the migration.
+	op, err := s.store.GetMaintenanceOperation(ctx, key)
+	if err != nil {
+		if err == store.ErrNotFound {
+			writeError(w, http.StatusNotFound, ErrCodeNotFound, "Migration not found", nil)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, ErrCodeInternalError, "Failed to get migration", nil)
+		return
+	}
+
+	// Verify this is a migration, not a routine operation.
+	if op.Category != store.MaintenanceCategoryMigration {
+		writeError(w, http.StatusBadRequest, ErrCodeInvalidRequest, "This operation is not a migration; use the operations endpoint", nil)
+		return
+	}
+
+	// Prevent re-running completed migrations (use CLI --force for that).
+	if op.Status == store.MaintenanceStatusCompleted {
+		writeError(w, http.StatusConflict, ErrCodeConflict, "Migration already completed; use CLI --force to re-run", nil)
+		return
+	}
+
+	// Prevent running if already in progress.
+	if op.Status == store.MaintenanceStatusRunning {
+		writeError(w, http.StatusConflict, ErrCodeConflict, "Migration is already running", nil)
+		return
+	}
+
+	// Parse request body for params.
+	var body map[string]interface{}
+	if r.Body != nil {
+		defer r.Body.Close()
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	params := parseMigrationParams(body)
+
+	// Resolve the executor for this migration key.
+	executor, err := s.resolveMaintenanceExecutor(key)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, ErrCodeInvalidRequest, err.Error(), nil)
+		return
+	}
+
+	// Mark the migration as running.
+	now := time.Now()
+	op.Status = store.MaintenanceStatusRunning
+	op.StartedAt = &now
+	op.StartedBy = user.Email()
+	if err := s.store.UpdateMaintenanceOperation(ctx, op); err != nil {
+		writeError(w, http.StatusInternalServerError, ErrCodeInternalError, "Failed to update migration status", nil)
+		return
+	}
+
+	// Execute asynchronously.
+	go func() {
+		var buf bytes.Buffer
+		execErr := executor.Run(context.Background(), &buf, params)
+
+		finishedAt := time.Now()
+		op.CompletedAt = &finishedAt
+
+		if execErr != nil {
+			op.Status = store.MaintenanceStatusFailed
+			result := map[string]interface{}{
+				"error": execErr.Error(),
+				"log":   buf.String(),
+			}
+			resultJSON, _ := json.Marshal(result)
+			op.Result = string(resultJSON)
+		} else {
+			op.Status = store.MaintenanceStatusCompleted
+			result := map[string]interface{}{
+				"log": buf.String(),
+			}
+			if params["dryRun"] == "true" {
+				// Dry runs don't actually complete the migration — reset to pending.
+				op.Status = store.MaintenanceStatusPending
+				op.CompletedAt = nil
+				result["dryRun"] = true
+			}
+			resultJSON, _ := json.Marshal(result)
+			op.Result = string(resultJSON)
+		}
+
+		_ = s.store.UpdateMaintenanceOperation(context.Background(), op)
+	}()
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "running",
+	})
+}
+
+// resolveMaintenanceExecutor returns the executor for a given operation key.
+func (s *Server) resolveMaintenanceExecutor(key string) (MaintenanceExecutor, error) {
+	switch key {
+	case "secret-hub-id-migration":
+		backend := s.GetSecretBackend()
+		if backend == nil {
+			return nil, fmt.Errorf("no secret backend configured; cannot run secret migration")
+		}
+		return &SecretMigrationExecutor{
+			store:         s.store,
+			secretBackend: backend,
+		}, nil
+	default:
+		return nil, fmt.Errorf("no executor registered for migration %q", key)
+	}
 }
 
 // listMaintenanceOperations returns all operations grouped by category.
