@@ -101,3 +101,29 @@ Deploy the build, restart the server twice, and compare:
 | Init differs between runs | `abc123` | `def456` | `def456` | Key is changing. Check for `"Failed to load user signing key"` warning — indicates base64 decode or DB read failure. |
 | Init matches but failure differs | `abc123` | `abc123` | `def456` | Two UserTokenService instances with different keys. Check for re-initialization. |
 | No failure fingerprint logged | — | — | (missing) | The failure isn't in `ValidateUserToken` — check if it's hitting a different auth path (UAT, agent token, etc.). |
+
+## Fix: Server Bootstrap Secrets (2026-03-31)
+
+### Root cause
+
+The `ensureSigningKey()` function in `hub.New()` checks the secret backend (GCP SM) first, then falls back to SQLite. However, `SetSecretBackend()` was called **after** `hub.New()`, so `s.secretBackend` was always `nil` during signing key initialization. This meant:
+
+1. Signing keys always came from SQLite, never from the intended production secret backend
+2. Before the scope-ID migration fix, SQLite lookups failed silently, causing ephemeral keys
+3. The old binary had no warning log for this case — ephemeral keys were generated silently
+4. Each restart generated a new random ephemeral key, invalidating all previous tokens
+
+### Fix applied
+
+1. **Moved secret backend initialization before `hub.New()`** in `cmd/server_foreground.go`
+2. **Added `SecretBackend` field to `ServerConfig`** so it's available during `ensureSigningKey()`
+3. **Added SQLite-to-backend sync**: when a key is found in SQLite but the backend is configured, the key is synced to the backend for future restarts
+4. **Added `logSigningKeyFailure()`**: logs at ERROR level (not WARN) when a secret backend is configured but key loading fails
+5. **Added fingerprint logging for agent token service** (was only on user tokens)
+
+### Expected behavior after fix
+
+- First restart after deploying: `"Loaded existing signing key from store"` + `"Synced signing key from store to secret backend"`
+- Subsequent restarts: `"Loaded existing signing key from secret backend"`
+- Both agent and user key fingerprints logged at INFO level on every startup
+- One-time token invalidation expected for tokens signed by previous builds' ephemeral keys; users need to log in once after deploying the fix

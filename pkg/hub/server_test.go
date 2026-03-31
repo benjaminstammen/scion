@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GoogleCloudPlatform/scion/pkg/secret"
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
 	"github.com/GoogleCloudPlatform/scion/pkg/store/sqlite"
 )
@@ -271,6 +272,116 @@ func TestServer_SigningKeyMigration_LegacyHubScopeID(t *testing.T) {
 		if sec.Key == SecretKeyAgentSigningKey || sec.Key == SecretKeyUserSigningKey {
 			t.Errorf("legacy record for %s should have been deleted during migration", sec.Key)
 		}
+	}
+}
+
+func TestServer_SigningKeyBootstrapWithSecretBackend(t *testing.T) {
+	// Verify that when SecretBackend is set in ServerConfig, signing keys
+	// are loaded through it and synced from SQLite to the backend.
+	s, err := sqlite.New(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create test store: %v", err)
+	}
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatalf("failed to migrate test store: %v", err)
+	}
+
+	hubID := "test-backend-hub"
+	backend := secret.NewLocalBackend(s, hubID)
+
+	cfg := DefaultServerConfig()
+	cfg.HubID = hubID
+	cfg.SecretBackend = backend
+
+	// Run 1: keys generated and stored
+	srv1 := New(cfg, s)
+	t.Cleanup(func() { srv1.Shutdown(context.Background()) })
+	if srv1.userTokenService == nil {
+		t.Fatal("userTokenService not initialized")
+	}
+
+	key1 := srv1.userTokenService.config.SigningKey
+
+	// Generate a token with this key
+	accessToken, _, _, err := srv1.userTokenService.GenerateTokenPair(
+		"user-1", "test@example.com", "Test", store.UserRoleAdmin, ClientTypeWeb,
+	)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair failed: %v", err)
+	}
+
+	// Verify key is available through the secret backend
+	ctx := context.Background()
+	sv, err := backend.Get(ctx, SecretKeyUserSigningKey, store.ScopeHub, hubID)
+	if err != nil {
+		t.Fatalf("Signing key should be in secret backend after first run: %v", err)
+	}
+	if sv.Value == "" {
+		t.Fatal("Signing key value in backend should not be empty")
+	}
+
+	// Run 2: create new server — key should be loaded from backend
+	srv2 := New(cfg, s)
+	t.Cleanup(func() { srv2.Shutdown(context.Background()) })
+
+	key2 := srv2.userTokenService.config.SigningKey
+	if string(key1) != string(key2) {
+		t.Errorf("signing keys should match across restarts: key1=%x key2=%x", key1[:8], key2[:8])
+	}
+
+	// Token from Run 1 must validate on Run 2
+	claims, err := srv2.userTokenService.ValidateUserToken(accessToken)
+	if err != nil {
+		t.Fatalf("Token from Run 1 should validate after restart with backend: %v", err)
+	}
+	if claims.Email != "test@example.com" {
+		t.Errorf("expected email test@example.com, got %s", claims.Email)
+	}
+}
+
+func TestServer_SigningKeySyncFromStoreToBackend(t *testing.T) {
+	// Verify that keys pre-existing in SQLite are synced to the secret backend
+	// when the backend is newly configured (migration from no-backend to backend).
+	s, err := sqlite.New(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create test store: %v", err)
+	}
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatalf("failed to migrate test store: %v", err)
+	}
+
+	hubID := "test-sync-hub"
+
+	// Run 1: No secret backend — keys go to SQLite only
+	cfg := DefaultServerConfig()
+	cfg.HubID = hubID
+	srv1 := New(cfg, s)
+	t.Cleanup(func() { srv1.Shutdown(context.Background()) })
+	key1 := srv1.userTokenService.config.SigningKey
+
+	// Run 2: Secret backend configured — keys should sync from SQLite to backend
+	backend := secret.NewLocalBackend(s, hubID)
+	cfg.SecretBackend = backend
+	srv2 := New(cfg, s)
+	t.Cleanup(func() { srv2.Shutdown(context.Background()) })
+	key2 := srv2.userTokenService.config.SigningKey
+
+	if string(key1) != string(key2) {
+		t.Errorf("keys should match after adding backend: key1=%x key2=%x", key1[:8], key2[:8])
+	}
+
+	// Verify the key is now in the backend
+	ctx := context.Background()
+	sv, err := backend.Get(ctx, SecretKeyUserSigningKey, store.ScopeHub, hubID)
+	if err != nil {
+		t.Fatalf("Signing key should be synced to backend: %v", err)
+	}
+	decodedKey, err := base64.StdEncoding.DecodeString(sv.Value)
+	if err != nil {
+		t.Fatalf("Failed to decode synced key: %v", err)
+	}
+	if string(decodedKey) != string(key1) {
+		t.Error("Synced key value should match original SQLite key")
 	}
 }
 

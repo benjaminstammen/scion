@@ -207,8 +207,23 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 
 	// 11. Start Hub
 	var hubSrv *hub.Server
+	var secretBackend secret.SecretBackend
 	if enableHub {
-		hubSrv = initHubServer(ctx, cfg, s, hubEndpoint, devAuthToken, adminEmailList, adminMode, maintenanceMessage, requestLogger, messageLogger, globalDir, pluginMgr)
+		// Initialize secret backend early so signing keys can be loaded from it
+		// during hub server creation. This prevents the previous bug where
+		// ensureSigningKey always fell through to SQLite because the secret
+		// backend was set too late (after hub.New()).
+		hubID := cfg.Hub.ResolveHubID()
+		var sbErr error
+		secretBackend, sbErr = secret.NewBackend(ctx, cfg.Secrets.Backend, s, secret.GCPBackendConfig{
+			ProjectID:       cfg.Secrets.GCPProjectID,
+			CredentialsJSON: cfg.Secrets.GCPCredentials,
+		}, hubID)
+		if sbErr != nil {
+			log.Printf("Warning: failed to initialize secret backend: %v", sbErr)
+		}
+
+		hubSrv = initHubServer(ctx, cfg, s, hubEndpoint, devAuthToken, adminEmailList, adminMode, maintenanceMessage, requestLogger, messageLogger, globalDir, pluginMgr, secretBackend)
 
 		if !enableWeb {
 			// Hub runs its own HTTP server (standalone mode).
@@ -603,7 +618,7 @@ func parseAdminEmails(cfg *config.GlobalConfig) []string {
 }
 
 // initHubServer creates and configures the Hub server.
-func initHubServer(ctx context.Context, cfg *config.GlobalConfig, s store.Store, hubEndpoint, devAuthToken string, adminEmailList []string, adminMode bool, maintenanceMessage string, requestLogger, messageLogger *slog.Logger, globalDir string, pluginMgr *scionplugin.Manager) *hub.Server {
+func initHubServer(ctx context.Context, cfg *config.GlobalConfig, s store.Store, hubEndpoint, devAuthToken string, adminEmailList []string, adminMode bool, maintenanceMessage string, requestLogger, messageLogger *slog.Logger, globalDir string, pluginMgr *scionplugin.Manager, secretBackend secret.SecretBackend) *hub.Server {
 	hubCfg := hub.ServerConfig{
 		HubID:                 cfg.Hub.ResolveHubID(),
 		Port:                  cfg.Hub.Port,
@@ -669,6 +684,7 @@ func initHubServer(ctx context.Context, cfg *config.GlobalConfig, s store.Store,
 			},
 		},
 		MaintenanceConfig: resolveMaintenanceConfig(cfg),
+		SecretBackend:     secretBackend,
 	}
 
 	hubSrv := hub.New(hubCfg, s)
@@ -727,15 +743,10 @@ func initHubServer(ctx context.Context, cfg *config.GlobalConfig, s store.Store,
 	hubID := hubSrv.HubID()
 	log.Printf("Hub instance ID: %s", hubID)
 
-	// Initialize secret backend
-	secretBackend, err := secret.NewBackend(ctx, cfg.Secrets.Backend, s, secret.GCPBackendConfig{
-		ProjectID:       cfg.Secrets.GCPProjectID,
-		CredentialsJSON: cfg.Secrets.GCPCredentials,
-	}, hubID)
-	if err != nil {
-		log.Printf("Warning: failed to initialize secret backend: %v", err)
-	} else {
-		hubSrv.SetSecretBackend(secretBackend)
+	// Secret backend was initialized before hub.New() and passed via
+	// ServerConfig.SecretBackend so that signing keys are loaded from it
+	// during server creation. Log the configured backend here.
+	if secretBackend != nil {
 		log.Printf("Secret backend configured: %s", cfg.Secrets.Backend)
 	}
 

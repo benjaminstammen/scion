@@ -118,6 +118,11 @@ type ServerConfig struct {
 	// HubID is the unique hub instance ID used for secret namespacing.
 	// If empty, secrets are looked up/stored with an empty scope ID.
 	HubID string
+	// SecretBackend is the optional secret backend for signing key storage.
+	// When set before New(), ensureSigningKey can load/persist keys through the
+	// production secret backend (e.g., GCP Secret Manager) instead of relying
+	// solely on the SQLite store.
+	SecretBackend secret.SecretBackend
 	// MaintenanceConfig holds configuration for routine maintenance operations.
 	MaintenanceConfig MaintenanceConfig
 }
@@ -534,6 +539,12 @@ func New(cfg ServerConfig, s store.Store) *Server {
 		workspaceLog:      logging.Subsystem("hub.workspace"),
 	}
 
+	// Set secret backend from config so ensureSigningKey can use it.
+	// This must happen before signing key initialization below.
+	if cfg.SecretBackend != nil {
+		srv.secretBackend = cfg.SecretBackend
+	}
+
 	// Initialize user activity tracker (throttled to once per hour per user)
 	srv.userActivity = NewUserActivityTracker(s, time.Hour)
 
@@ -547,13 +558,15 @@ func New(cfg ServerConfig, s store.Store) *Server {
 	if err == nil {
 		cfg.AgentTokenConfig.SigningKey = agentKey
 	} else {
-		slog.Warn("Failed to load agent signing key, will use ephemeral key", "error", err)
+		logSigningKeyFailure("agent", err, srv.secretBackend != nil)
 	}
 	tokenService, err := NewAgentTokenService(cfg.AgentTokenConfig)
 	if err != nil {
 		slog.Warn("Failed to initialize agent token service", "error", err)
 	} else {
 		srv.agentTokenService = tokenService
+		fp := sha256.Sum256(tokenService.config.SigningKey)
+		slog.Info("Agent token service initialized", "key_fingerprint", hex.EncodeToString(fp[:8]))
 	}
 
 	// Initialize user token service
@@ -561,7 +574,7 @@ func New(cfg ServerConfig, s store.Store) *Server {
 	if err == nil {
 		cfg.UserTokenConfig.SigningKey = userKey
 	} else {
-		slog.Warn("Failed to load user signing key, will use ephemeral key", "error", err)
+		logSigningKeyFailure("user", err, srv.secretBackend != nil)
 	}
 	userTokenService, err := NewUserTokenService(cfg.UserTokenConfig)
 	if err != nil {
@@ -714,7 +727,26 @@ func (s *Server) ensureSigningKey(ctx context.Context, keyName string, existingK
 	val, err := s.store.GetSecretValue(ctx, keyName, store.ScopeHub, hubID)
 	if err == nil {
 		slog.Info("Loaded existing signing key from store", "key", keyName)
-		return base64.StdEncoding.DecodeString(val)
+		key, decErr := base64.StdEncoding.DecodeString(val)
+		if decErr != nil {
+			return nil, fmt.Errorf("failed to decode signing key %s from store: %w", keyName, decErr)
+		}
+		// Sync to secret backend so future restarts load from the authoritative source.
+		if s.secretBackend != nil {
+			input := &secret.SetSecretInput{
+				Name:        keyName,
+				Value:       val,
+				Scope:       store.ScopeHub,
+				ScopeID:     hubID,
+				Description: fmt.Sprintf("Hub signing key for %s (synced from store)", keyName),
+			}
+			if _, _, syncErr := s.secretBackend.Set(ctx, input); syncErr == nil {
+				slog.Info("Synced signing key from store to secret backend", "key", keyName)
+			} else {
+				slog.Warn("Failed to sync signing key to secret backend", "key", keyName, "error", syncErr)
+			}
+		}
+		return key, nil
 	}
 	if err != store.ErrNotFound {
 		return nil, fmt.Errorf("failed to load signing key %s from store: %w", keyName, err)
@@ -785,6 +817,18 @@ func (s *Server) ensureSigningKey(ctx context.Context, keyName string, existingK
 	}
 
 	return newKey, nil
+}
+
+// logSigningKeyFailure logs a signing key loading failure at the appropriate level.
+// When a secret backend is configured (production), this is an ERROR because
+// ephemeral keys will invalidate all tokens on the next restart.
+func logSigningKeyFailure(keyType string, err error, hasSecretBackend bool) {
+	if hasSecretBackend {
+		slog.Error("Failed to load signing key — using ephemeral key that will NOT survive restart",
+			"key_type", keyType, "error", err)
+	} else {
+		slog.Warn("Failed to load signing key, will use ephemeral key", "key_type", keyType, "error", err)
+	}
 }
 
 // persistSigningKey saves a signing key to the store with an ID scoped to the hub instance.
