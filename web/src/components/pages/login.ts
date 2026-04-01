@@ -174,6 +174,7 @@ export class ScionLoginPage extends LitElement {
       justify-content: center;
       gap: 0.75rem;
       width: 100%;
+      box-sizing: border-box;
       padding: 0.875rem 1.25rem;
       border: 1px solid var(--scion-border, #e2e8f0);
       border-radius: 0.5rem;
