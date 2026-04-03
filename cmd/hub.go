@@ -114,7 +114,7 @@ var hubGrovesDeleteCmd = &cobra.Command{
 	Long: `Delete a grove from the Hub.
 
 This will remove the grove and all associated broker provider relationships.
-Agents within the grove will also be deleted unless --preserve-agents is set.
+All agents within the grove will be stopped and deleted.
 
 If no grove name is provided, the current grove is used.
 
@@ -126,10 +126,7 @@ Examples:
   scion hub groves delete my-project
 
   # Delete without confirmation
-  scion hub groves delete my-project -y
-
-  # Delete grove but preserve agents
-  scion hub groves delete my-project --preserve-agents`,
+  scion hub groves delete my-project -y`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runHubGrovesDelete,
 }
@@ -258,11 +255,10 @@ Examples:
 }
 
 var (
-	hubGrovesDeletePreserveAgents bool
-	hubGroveCreateSlug            string
-	hubGroveCreateName            string
-	hubGroveCreateBranch          string
-	hubGroveCreateVisibility      string
+	hubGroveCreateSlug       string
+	hubGroveCreateName       string
+	hubGroveCreateBranch     string
+	hubGroveCreateVisibility string
 )
 
 // hubGroveCreateCmd creates a grove on the Hub from a git URL
@@ -320,8 +316,6 @@ func init() {
 	hubGrovesInfoCmd.Flags().BoolVar(&hubOutputJSON, "json", false, "Output in JSON format")
 	hubGrovesDeleteCmd.Flags().BoolVarP(&autoConfirm, "yes", "y", false, "Skip confirmation prompt")
 	hubGrovesDeleteCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Non-interactive mode: implies --yes, errors on ambiguous prompts")
-	hubGrovesDeleteCmd.Flags().BoolVar(&hubGrovesDeletePreserveAgents, "preserve-agents", false, "Preserve agents when deleting grove")
-
 	// Grove create flags
 	hubGroveCreateCmd.Flags().StringVar(&hubGroveCreateSlug, "slug", "", "Override the auto-derived slug")
 	hubGroveCreateCmd.Flags().StringVar(&hubGroveCreateName, "name", "", "Human-friendly display name (defaults to repo name)")
@@ -1278,9 +1272,8 @@ func runHubGrovesDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("deletion cancelled")
 	}
 
-	// Delete the grove
-	deleteAgents := !hubGrovesDeletePreserveAgents
-	if err := client.Groves().Delete(ctx, grove.ID, deleteAgents); err != nil {
+	// Delete the grove (always cascade-deletes all agents)
+	if err := client.Groves().Delete(ctx, grove.ID); err != nil {
 		return fmt.Errorf("failed to delete grove: %w", err)
 	}
 
@@ -1290,16 +1283,15 @@ func runHubGrovesDelete(cmd *cobra.Command, args []string) error {
 			Command: "hub groves delete",
 			Message: fmt.Sprintf("Grove '%s' deleted successfully.", grove.Name),
 			Details: map[string]interface{}{
-				"groveId":       grove.ID,
-				"groveName":     grove.Name,
-				"agentsDeleted": deleteAgents,
-				"agentCount":    grove.AgentCount,
+				"groveId":    grove.ID,
+				"groveName":  grove.Name,
+				"agentCount": grove.AgentCount,
 			},
 		})
 	}
 
 	fmt.Printf("Grove '%s' deleted successfully.\n", grove.Name)
-	if deleteAgents {
+	if grove.AgentCount > 0 {
 		fmt.Printf("Deleted %d agent(s).\n", grove.AgentCount)
 	}
 	if providersResp != nil && len(providersResp.Providers) > 0 {

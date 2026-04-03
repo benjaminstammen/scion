@@ -87,9 +87,6 @@ export class ScionPageGroveSettings extends LitElement {
   private deleteLoading = false;
 
   @state()
-  private deleteAlsoAgents = false;
-
-  @state()
   private templates: Template[] = [];
 
   @state()
@@ -413,20 +410,6 @@ export class ScionPageGroveSettings extends LitElement {
       flex-direction: column;
       align-items: flex-end;
       gap: 0.75rem;
-    }
-
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8125rem;
-      color: var(--scion-text-muted, #64748b);
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .checkbox-label input[type='checkbox'] {
-      cursor: pointer;
     }
 
     .loading-state {
@@ -1013,14 +996,11 @@ export class ScionPageGroveSettings extends LitElement {
 
   private async handleDeleteGrove(event?: MouseEvent): Promise<void> {
     const groveName = this.grove?.name || this.groveId;
-    const agentWarning = this.deleteAlsoAgents
-      ? '\n\nThis will also delete all agents in this grove.'
-      : '';
 
     if (
       !event?.altKey &&
       !confirm(
-        `Are you sure you want to delete "${groveName}"?${agentWarning}\n\nThis action cannot be undone.`
+        `Are you sure you want to delete "${groveName}"?\n\nAll agents in this grove will be stopped and deleted.\n\nThis action cannot be undone.`
       )
     ) {
       return;
@@ -1029,8 +1009,7 @@ export class ScionPageGroveSettings extends LitElement {
     this.deleteLoading = true;
 
     try {
-      const params = this.deleteAlsoAgents ? '?deleteAgents=true' : '';
-      const response = await apiFetch(`/api/v1/groves/${this.groveId}${params}`, {
+      const response = await apiFetch(`/api/v1/groves/${this.groveId}`, {
         method: 'DELETE',
       });
 
@@ -1108,21 +1087,11 @@ export class ScionPageGroveSettings extends LitElement {
                 <div class="delete-info">
                   <h3>Delete this grove</h3>
                   <p>
-                    Permanently remove this grove and its configuration. This action cannot be
-                    undone.
+                    Permanently remove this grove, its configuration, and all agents. All running
+                    agents will be stopped and deleted. This action cannot be undone.
                   </p>
                 </div>
                 <div class="delete-actions">
-                  <label class="checkbox-label">
-                    <input
-                      type="checkbox"
-                      .checked=${this.deleteAlsoAgents}
-                      @change=${(e: Event) => {
-                        this.deleteAlsoAgents = (e.target as HTMLInputElement).checked;
-                      }}
-                    />
-                    Also delete all agents
-                  </label>
                   <sl-button
                     variant="danger"
                     size="small"

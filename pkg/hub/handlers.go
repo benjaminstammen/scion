@@ -4253,10 +4253,7 @@ func (s *Server) deleteGrove(w http.ResponseWriter, r *http.Request, id string) 
 	// Dispatch agent deletions to runtime brokers so containers are stopped
 	// and agent files are cleaned up. The DB cascade will remove agent records,
 	// but we need the broker to tear down the actual resources first.
-	deleteAgents := r.URL.Query().Get("deleteAgents") == "true"
-	if deleteAgents {
-		s.deleteGroveAgents(ctx, grove)
-	}
+	s.deleteGroveAgents(ctx, grove)
 
 	// Clean up all groups associated with the grove (agents group, members group, etc.)
 	if groveGroups, err := s.store.ListGroups(ctx, store.GroupFilter{GroveID: id}, store.ListOptions{Limit: 100}); err == nil {
