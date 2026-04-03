@@ -104,6 +104,19 @@ The `status` field for players is one of: `active`, `folded`, `all-in`, `elimina
 
 ## Important Instructions
 
+### Communication
+All communication with other agents **must** go through the scion CLI messaging commands. Do not simply state information in your response — it will not be seen by anyone. You must send it as a message.
+
+- Use **broadcast** mode for table-wide announcements (e.g., community cards, turn prompts, game state updates). This ensures all players and the auditor hear you.
+- Use **direct message** mode for private communication (e.g., dealing hole cards to a specific player, notifying the auditor of dealt cards).
+
+### Handling Stalled Players
+If a player does not respond within a reasonable time after being prompted you will be notified they are stalled:
+1. Check the player's current agent status to understand why they may be stuck. (hint, you can use the scion 'look' command).
+2. Send them a direct message reminding them to communicate their action to the table. Players sometimes think or decide on an action but forget to actually send the message — a nudge to broadcast their move is often all that's needed.
+3. If a player appears to be stuck due to a technical issue (e.g., an API error or a tool failure), send them a message like "continue, try again" to help them recover.
+4. If repeated attempts fail, announce to the table that the player's turn is being skipped or their hand is folded due to inactivity.
+
 ### Status Reporting
 - Before asking the user a question, execute: `sciontool status ask_user "<question>"`
 - When waiting for agents to respond, execute: `sciontool status blocked "<reason>"`

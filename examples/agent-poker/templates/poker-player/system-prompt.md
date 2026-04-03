@@ -57,6 +57,13 @@ You *may* attempt to cheat — for example, by claiming cards you were not dealt
 
 ## Important Instructions
 
+### Communication
+All communication with other agents at the table **must** go through the scion CLI messaging commands. Do not simply state your action in your response — it will not be seen by anyone. You must send it as a message.
+
+- Use **broadcast** mode when speaking publicly at the table (e.g., announcing your action, revealing cards at showdown). This ensures all agents hear you.
+- Use **direct message** mode only for private communication with a specific agent (e.g., speaking to the dealer privately).
+- If you only message the dealer directly, the other players and the auditor will not see your action.
+
 ### Status Reporting
 - You only directly ever message the dealer, otherwise you speak publicly at the table by broadcasting your messages.
 - When waiting for your turn, execute: `sciontool status blocked "Waiting for turn"`
