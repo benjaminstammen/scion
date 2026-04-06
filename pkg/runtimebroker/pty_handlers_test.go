@@ -69,6 +69,42 @@ func TestWaitForTmuxSession_SucceedsImmediately(t *testing.T) {
 	}
 }
 
+func TestActiveWindowOSC(t *testing.T) {
+	tests := []struct {
+		name     string
+		window   string
+		expected string
+	}{
+		{"agent window", "agent", "\033]7337;tmuxwindow=agent\007"},
+		{"shell window", "shell", "\033]7337;tmuxwindow=shell\007"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(activeWindowOSC(tc.window))
+			if got != tc.expected {
+				t.Errorf("activeWindowOSC(%q) = %q, want %q", tc.window, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestQueryTmuxActiveWindow_CommandFails(t *testing.T) {
+	// "false" always exits 1, simulating tmux not available
+	result := queryTmuxActiveWindow(context.Background(), "false", "test-container", "scion")
+	if result != "" {
+		t.Errorf("expected empty string on failure, got %q", result)
+	}
+}
+
+func TestQueryTmuxActiveWindow_ContextTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+	result := queryTmuxActiveWindow(ctx, "echo", "test-container", "scion")
+	if result != "" {
+		t.Errorf("expected empty string on cancelled context, got %q", result)
+	}
+}
+
 func TestK8sSizeQueue_ReturnsInitialSize(t *testing.T) {
 	q := &k8sSizeQueue{
 		resizeCh: make(chan [2]int, 1),

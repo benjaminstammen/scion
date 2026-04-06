@@ -455,6 +455,19 @@ export class ScionPageTerminal extends LitElement {
     this.terminal.open(container);
     this.enableShiftSelectionOnMac();
 
+    // Detect active tmux window from OSC 7337 sequence sent by the broker
+    // on connect. Format: \033]7337;tmuxwindow=<name>\007
+    this.terminal.parser.registerOscHandler(7337, (data: string) => {
+      const match = data.match(/^tmuxwindow=(.+)$/);
+      if (match) {
+        const name = match[1];
+        if (name === 'agent' || name === 'shell') {
+          this.activeWindow = name as TmuxWindow;
+        }
+      }
+      return true;
+    });
+
     // Defer initial fit until browser has completed layout so the container
     // has its final dimensions (below the toolbar).
     await new Promise((resolve) => requestAnimationFrame(resolve));

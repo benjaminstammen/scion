@@ -15,6 +15,7 @@
 package runtimebroker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,6 +47,69 @@ const (
 const (
 	ptyMaxDataSize = 32 * 1024 // 32KB max per message
 )
+
+// activeWindowOSC builds an OSC 7337 escape sequence encoding the active tmux
+// window name. The web terminal client parses this to sync its toolbar selector.
+func activeWindowOSC(windowName string) []byte {
+	return []byte(fmt.Sprintf("\033]7337;tmuxwindow=%s\007", windowName))
+}
+
+// queryTmuxActiveWindow queries the currently active tmux window name via
+// container exec (Docker / Apple Virtualization runtimes).
+func queryTmuxActiveWindow(ctx context.Context, runtimeCmd, containerID, execUser string) string {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, runtimeCmd, "exec", "--user", execUser, containerID,
+		"tmux", "display-message", "-t", "scion", "-p", "#{window_name}")
+	out, err := cmd.Output()
+	if err != nil {
+		slog.Debug("Failed to query tmux active window", "containerID", containerID, "error", err)
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// queryTmuxActiveWindowK8s queries the active tmux window name in a K8s pod.
+func queryTmuxActiveWindowK8s(ctx context.Context, config *rest.Config, clientset kubernetes.Interface, namespace, podName, execUser string) string {
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req := clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec")
+
+	req.VersionedParams(&corev1.PodExecOptions{
+		Container: "agent",
+		Command:   []string{"su", "-", execUser, "-c", "tmux display-message -t scion -p '#{window_name}'"},
+		Stdin:     false,
+		Stdout:    true,
+		Stderr:    false,
+		TTY:       false,
+	}, scheme.ParameterCodec)
+
+	executor, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		slog.Debug("Failed to create executor for tmux window query", "pod", podName, "error", err)
+		return ""
+	}
+
+	var buf bytes.Buffer
+	if err := executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdout: &buf,
+		Stderr: io.Discard,
+	}); err != nil {
+		slog.Debug("Failed to query tmux active window in K8s", "pod", podName, "error", err)
+		return ""
+	}
+	return strings.TrimSpace(buf.String())
+}
 
 // waitForTmuxSession polls the container until the tmux session "scion" is
 // available. After starting a container, sciontool init needs time to set up
@@ -266,6 +330,13 @@ func (s *LocalPTYSession) Run() error {
 		return fmt.Errorf("failed to start exec: %w", err)
 	}
 
+	// Send the active tmux window name so the web toolbar reflects the
+	// correct initial state (the default assumption is "agent").
+	if wn := queryTmuxActiveWindow(s.ctx, s.runtimeCmd, s.containerID, s.execUser); wn != "" {
+		msg := wsprotocol.NewPTYDataMessage(activeWindowOSC(wn))
+		_ = s.writeToWebSocket(msg)
+	}
+
 	defer func() {
 		if s.ptyMaster != nil {
 			s.ptyMaster.Close()
@@ -304,6 +375,13 @@ func (s *LocalPTYSession) runK8sExec() error {
 
 	if err := waitForTmuxSession(s.ctx, s.runtimeCmd, s.containerID, namespace, s.execUser, s.k8sConfig, s.k8sClientset); err != nil {
 		return err
+	}
+
+	// Send the active tmux window name so the web toolbar reflects the
+	// correct initial state (the default assumption is "agent").
+	if wn := queryTmuxActiveWindowK8s(s.ctx, s.k8sConfig, s.k8sClientset, namespace, s.containerID, s.execUser); wn != "" {
+		msg := wsprotocol.NewPTYDataMessage(activeWindowOSC(wn))
+		_ = s.writeToWebSocket(msg)
 	}
 
 	req := s.k8sClientset.CoreV1().RESTClient().Post().
@@ -597,6 +675,12 @@ func (h *StreamPTYHandler) Run() error {
 		return err
 	}
 
+	// Send the active tmux window name so the web toolbar reflects the
+	// correct initial state (the default assumption is "agent").
+	if wn := queryTmuxActiveWindow(h.ctx, runtimeCmd, h.containerID, h.execUser); wn != "" {
+		_ = h.client.SendStreamData(h.handler.streamID, activeWindowOSC(wn))
+	}
+
 	defer func() {
 		// With real PTY, ptyMaster and ptySlave are the same fd, so only close once
 		if h.ptyMaster != nil {
@@ -645,6 +729,12 @@ func (h *StreamPTYHandler) runK8sExec() error {
 	// Wait for tmux session readiness using Go client
 	if err := waitForTmuxSession(h.ctx, h.runtimeCmd, h.containerID, namespace, h.execUser, h.k8sConfig, h.k8sClientset); err != nil {
 		return err
+	}
+
+	// Send the active tmux window name so the web toolbar reflects the
+	// correct initial state (the default assumption is "agent").
+	if wn := queryTmuxActiveWindowK8s(h.ctx, h.k8sConfig, h.k8sClientset, namespace, h.containerID, h.execUser); wn != "" {
+		_ = h.client.SendStreamData(h.handler.streamID, activeWindowOSC(wn))
 	}
 
 	req := h.k8sClientset.CoreV1().RESTClient().Post().
