@@ -107,7 +107,7 @@ func PreflightAuth(ctx context.Context, credentialsFile, projectID string, log *
 		log.Error("Chat API preflight failed — insufficient scopes or permissions",
 			"status", resp.StatusCode, "response", string(body))
 		logRemediationSteps(credentialsFile, projectID, log)
-		return fmt.Errorf("API preflight: Chat API returned 403 — check OAuth scopes and IAM roles")
+		return fmt.Errorf("API preflight: Chat API returned 403 — check IAM roles and API enablement")
 	}
 
 	log.Info("Chat API credential preflight passed")
@@ -121,18 +121,14 @@ func logRemediationSteps(credentialsFile, projectID string, log *slog.Logger) {
 	log.Error(fmt.Sprintf("  1. Ensure the Google Chat API is enabled:"))
 	log.Error(fmt.Sprintf("       gcloud services enable chat.googleapis.com --project=%s", projectID))
 	if credentialsFile == "" {
-		log.Error(fmt.Sprintf("  2. Verify the GCE VM service account has the required IAM roles:"))
-		log.Error(fmt.Sprintf("       SA=$(gcloud compute instances describe $(hostname) --zone=$(gcloud compute instances list --filter=name=$(hostname) --format='value(zone)') --format='value(serviceAccounts[0].email)' --project=%s)", projectID))
+		log.Error(fmt.Sprintf("  2. Grant the service account the Chat App IAM role:"))
+		log.Error(fmt.Sprintf("       SA=$(curl -sH 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email)"))
 		log.Error(fmt.Sprintf("       gcloud projects add-iam-policy-binding %s --member=serviceAccount:$SA --role=roles/chat.app --condition=None", projectID))
-		log.Error(fmt.Sprintf("  3. Ensure the VM was created with sufficient OAuth scopes."))
-		log.Error(fmt.Sprintf("       If the VM uses the default scopes, you may need to stop the VM and"))
-		log.Error(fmt.Sprintf("       update scopes to include https://www.googleapis.com/auth/chat.bot"))
-		log.Error(fmt.Sprintf("       or use the broad https://www.googleapis.com/auth/cloud-platform scope."))
-		log.Error(fmt.Sprintf("  4. Alternatively, set CHAT_APP_CREDENTIALS in chat-app.env to a service"))
+		log.Error(fmt.Sprintf("  3. Alternatively, set CHAT_APP_CREDENTIALS in chat-app.env to a service"))
 		log.Error(fmt.Sprintf("       account key file path to bypass ADC."))
 	} else {
 		log.Error(fmt.Sprintf("  2. Verify the key file at %s is valid and not expired.", credentialsFile))
-		log.Error(fmt.Sprintf("  3. Ensure the service account has the required IAM roles:"))
+		log.Error(fmt.Sprintf("  3. Grant the service account the Chat App IAM role:"))
 		log.Error(fmt.Sprintf("       gcloud projects add-iam-policy-binding %s --member=serviceAccount:<SA_EMAIL> --role=roles/chat.app --condition=None", projectID))
 	}
 }

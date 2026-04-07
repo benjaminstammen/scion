@@ -86,68 +86,89 @@ EXTERNAL_URL="${SCION_HUB_ENDPOINT}/chat/events"
 
 # ---------------------------------------------------------------------------
 # Chat API preflight — verify the service account can call the Chat API.
-# When using ADC on a GCE VM the instance's OAuth scopes and IAM bindings
-# must include the Chat API. These are easy to miss and produce an opaque
-# 403 at runtime, so we check here and print the exact gcloud commands.
+# When using ADC on a GCE VM the service account needs:
+#   1. The Google Chat API enabled on the project
+#   2. The roles/chat.app IAM role (or equivalent permission)
+# These are easy to miss and produce an opaque 403 at runtime, so we check
+# here and print the exact gcloud commands to fix them.
 # ---------------------------------------------------------------------------
 step "Checking Chat API prerequisites"
 
-REQUIRED_SCOPE="https://www.googleapis.com/auth/chat.bot"
-BROAD_SCOPE="https://www.googleapis.com/auth/cloud-platform"
+PREFLIGHT_FAILED=0
 
-if [[ -z "${CHAT_APP_CREDENTIALS:-}" ]]; then
-    # ADC path — check VM metadata for scopes.
-    METADATA_URL="http://metadata.google.internal/computeMetadata/v1"
-    if VM_SCOPES="$(curl -sf -H 'Metadata-Flavor: Google' \
-            "${METADATA_URL}/instance/service-accounts/default/scopes" 2>/dev/null)"; then
-        if ! echo "${VM_SCOPES}" | grep -qF "${REQUIRED_SCOPE}" && \
-           ! echo "${VM_SCOPES}" | grep -qF "${BROAD_SCOPE}"; then
-            echo ""
-            echo "WARNING: The GCE VM's OAuth scopes do not include the Chat API scope." >&2
-            echo "   The chat app will fail with a 403 (ACCESS_TOKEN_SCOPE_INSUFFICIENT) at runtime." >&2
-            echo "" >&2
-            echo "   To fix, stop the VM and add the required scope:" >&2
-            echo "     VM_NAME=\$(hostname)" >&2
-            echo "     VM_ZONE=\$(gcloud compute instances list --filter=\"name=\${VM_NAME}\" --format='value(zone)' --project=${CHAT_APP_PROJECT_ID})" >&2
-            echo "     gcloud compute instances stop \${VM_NAME} --zone=\${VM_ZONE} --project=${CHAT_APP_PROJECT_ID}" >&2
-            echo "     gcloud compute instances set-service-account \${VM_NAME} --zone=\${VM_ZONE} --project=${CHAT_APP_PROJECT_ID} \\" >&2
-            echo "       --scopes=https://www.googleapis.com/auth/cloud-platform" >&2
-            echo "     gcloud compute instances start \${VM_NAME} --zone=\${VM_ZONE} --project=${CHAT_APP_PROJECT_ID}" >&2
-            echo "" >&2
-            echo "   Alternatively, set CHAT_APP_CREDENTIALS in chat-app.env to a service" >&2
-            echo "   account key file path to bypass VM scopes entirely." >&2
-            echo "" >&2
-            read -r -p "Continue installation anyway? [y/N] " REPLY
-            if [[ ! "${REPLY}" =~ ^[Yy]$ ]]; then
-                exit 1
-            fi
-        else
-            substep "VM OAuth scopes include Chat API access"
-        fi
-    else
-        substep "Not running on GCE (metadata unavailable), skipping scope check"
-    fi
-fi
-
-# Check that the Google Chat API is enabled on the project.
-if command -v gcloud &>/dev/null; then
-    if ! gcloud services list --enabled --project="${CHAT_APP_PROJECT_ID}" \
-            --filter="name:chat.googleapis.com" --format="value(name)" 2>/dev/null \
-            | grep -q 'chat.googleapis.com'; then
-        echo "" >&2
-        echo "WARNING: The Google Chat API does not appear to be enabled on project ${CHAT_APP_PROJECT_ID}." >&2
-        echo "   Enable it with:" >&2
-        echo "     gcloud services enable chat.googleapis.com --project=${CHAT_APP_PROJECT_ID}" >&2
-        echo "" >&2
+# warn_prereq prints a warning block. In interactive mode it prompts to
+# continue; in non-interactive mode (e.g. ssh --command) it records the
+# failure and continues so the full set of issues is reported at once.
+warn_prereq() {
+    echo "" >&2
+    echo "WARNING: $1" >&2
+    shift
+    for line in "$@"; do
+        echo "   ${line}" >&2
+    done
+    echo "" >&2
+    if [[ -t 0 ]]; then
         read -r -p "Continue installation anyway? [y/N] " REPLY
         if [[ ! "${REPLY}" =~ ^[Yy]$ ]]; then
             exit 1
         fi
     else
+        PREFLIGHT_FAILED=1
+    fi
+}
+
+# 1. Check that the Google Chat API is enabled on the project.
+if command -v gcloud &>/dev/null; then
+    if ! gcloud services list --enabled --project="${CHAT_APP_PROJECT_ID}" \
+            --filter="name:chat.googleapis.com" --format="value(name)" 2>/dev/null \
+            | grep -q 'chat.googleapis.com'; then
+        warn_prereq \
+            "The Google Chat API does not appear to be enabled on project ${CHAT_APP_PROJECT_ID}." \
+            "Enable it with:" \
+            "  gcloud services enable chat.googleapis.com --project=${CHAT_APP_PROJECT_ID}"
+    else
         substep "Google Chat API is enabled on project ${CHAT_APP_PROJECT_ID}"
     fi
 else
     substep "gcloud CLI not found, skipping API enablement check"
+fi
+
+# 2. Check IAM role for the service account.
+if [[ -z "${CHAT_APP_CREDENTIALS:-}" ]] && command -v gcloud &>/dev/null; then
+    # Resolve the VM's service account email from the metadata server.
+    METADATA_URL="http://metadata.google.internal/computeMetadata/v1"
+    SA_EMAIL="$(curl -sf -H 'Metadata-Flavor: Google' \
+        "${METADATA_URL}/instance/service-accounts/default/email" 2>/dev/null || true)"
+
+    if [[ -n "${SA_EMAIL}" ]]; then
+        # Check if the service account has roles/chat.app on the project.
+        if ! gcloud projects get-iam-policy "${CHAT_APP_PROJECT_ID}" \
+                --flatten="bindings[].members" \
+                --filter="bindings.role=roles/chat.app AND bindings.members=serviceAccount:${SA_EMAIL}" \
+                --format="value(bindings.role)" 2>/dev/null \
+                | grep -q 'roles/chat.app'; then
+            warn_prereq \
+                "Service account ${SA_EMAIL} does not have the roles/chat.app IAM role on project ${CHAT_APP_PROJECT_ID}." \
+                "The chat app will fail with a 403 (PERMISSION_DENIED) at runtime." \
+                "" \
+                "Grant the role with:" \
+                "  gcloud projects add-iam-policy-binding ${CHAT_APP_PROJECT_ID} \\" \
+                "    --member=serviceAccount:${SA_EMAIL} \\" \
+                "    --role=roles/chat.app \\" \
+                "    --condition=None"
+        else
+            substep "Service account ${SA_EMAIL} has roles/chat.app"
+        fi
+    else
+        substep "Not running on GCE (metadata unavailable), skipping IAM check"
+    fi
+fi
+
+if [[ "${PREFLIGHT_FAILED}" -eq 1 ]]; then
+    echo "" >&2
+    echo "ERROR: Chat API preflight checks failed (see warnings above)." >&2
+    echo "   Fix the issues and re-run the installer, or run interactively to skip." >&2
+    exit 1
 fi
 
 step "Installing scion-chat-app"
