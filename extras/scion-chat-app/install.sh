@@ -86,11 +86,9 @@ EXTERNAL_URL="${SCION_HUB_ENDPOINT}/chat/events"
 
 # ---------------------------------------------------------------------------
 # Chat API preflight — verify the service account can call the Chat API.
-# When using ADC on a GCE VM the service account needs:
-#   1. The Google Chat API enabled on the project
-#   2. The roles/chat.app IAM role (or equivalent permission)
-# These are easy to miss and produce an opaque 403 at runtime, so we check
-# here and print the exact gcloud commands to fix them.
+# The Google Chat API uses the OAuth scope https://www.googleapis.com/auth/chat.bot
+# (not IAM roles). On a GCE VM using ADC, the VM's OAuth scopes must include
+# chat.bot — the broad cloud-platform scope does NOT cover Workspace APIs.
 # ---------------------------------------------------------------------------
 step "Checking Chat API prerequisites"
 
@@ -133,34 +131,40 @@ else
     substep "gcloud CLI not found, skipping API enablement check"
 fi
 
-# 2. Check IAM role for the service account.
-if [[ -z "${CHAT_APP_CREDENTIALS:-}" ]] && command -v gcloud &>/dev/null; then
-    # Resolve the VM's service account email from the metadata server.
-    METADATA_URL="http://metadata.google.internal/computeMetadata/v1"
-    SA_EMAIL="$(curl -sf -H 'Metadata-Flavor: Google' \
-        "${METADATA_URL}/instance/service-accounts/default/email" 2>/dev/null || true)"
+# 2. Check VM OAuth scopes when using ADC (no explicit credentials file).
+#    The Google Chat API requires the chat.bot scope. The broad cloud-platform
+#    scope does NOT cover Workspace APIs, so we must check for chat.bot
+#    specifically.
+REQUIRED_SCOPE="https://www.googleapis.com/auth/chat.bot"
 
-    if [[ -n "${SA_EMAIL}" ]]; then
-        # Check if the service account has roles/chat.app on the project.
-        if ! gcloud projects get-iam-policy "${CHAT_APP_PROJECT_ID}" \
-                --flatten="bindings[].members" \
-                --filter="bindings.role=roles/chat.app AND bindings.members=serviceAccount:${SA_EMAIL}" \
-                --format="value(bindings.role)" 2>/dev/null \
-                | grep -q 'roles/chat.app'; then
+if [[ -z "${CHAT_APP_CREDENTIALS:-}" ]]; then
+    METADATA_URL="http://metadata.google.internal/computeMetadata/v1"
+    if VM_SCOPES="$(curl -sf -H 'Metadata-Flavor: Google' \
+            "${METADATA_URL}/instance/service-accounts/default/scopes" 2>/dev/null)"; then
+        if ! echo "${VM_SCOPES}" | grep -qF "${REQUIRED_SCOPE}"; then
+            SA_EMAIL="$(curl -sf -H 'Metadata-Flavor: Google' \
+                "${METADATA_URL}/instance/service-accounts/default/email" 2>/dev/null || echo '<SA_EMAIL>')"
             warn_prereq \
-                "Service account ${SA_EMAIL} does not have the roles/chat.app IAM role on project ${CHAT_APP_PROJECT_ID}." \
-                "The chat app will fail with a 403 (PERMISSION_DENIED) at runtime." \
+                "The GCE VM's OAuth scopes do not include ${REQUIRED_SCOPE}." \
+                "The chat app will fail with 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT at runtime." \
+                "The cloud-platform scope does NOT cover Google Workspace APIs like Chat." \
                 "" \
-                "Grant the role with:" \
-                "  gcloud projects add-iam-policy-binding ${CHAT_APP_PROJECT_ID} \\" \
-                "    --member=serviceAccount:${SA_EMAIL} \\" \
-                "    --role=roles/chat.app \\" \
-                "    --condition=None"
+                "To fix, stop the VM and update its scopes (run from your workstation):" \
+                "  VM_NAME=\$(hostname)   # ${HOSTNAME:-}" \
+                "  VM_ZONE=\$(gcloud compute instances list --filter=\"name=\${VM_NAME}\" --format='value(zone)' --project=${CHAT_APP_PROJECT_ID})" \
+                "  gcloud compute instances stop \${VM_NAME} --zone=\${VM_ZONE} --project=${CHAT_APP_PROJECT_ID}" \
+                "  gcloud compute instances set-service-account \${VM_NAME} --zone=\${VM_ZONE} --project=${CHAT_APP_PROJECT_ID} \\" \
+                "    --service-account=${SA_EMAIL} \\" \
+                "    --scopes=https://www.googleapis.com/auth/cloud-platform,${REQUIRED_SCOPE}" \
+                "  gcloud compute instances start \${VM_NAME} --zone=\${VM_ZONE} --project=${CHAT_APP_PROJECT_ID}" \
+                "" \
+                "Alternatively, set CHAT_APP_CREDENTIALS in chat-app.env to a service" \
+                "account key file path to bypass VM scopes entirely."
         else
-            substep "Service account ${SA_EMAIL} has roles/chat.app"
+            substep "VM OAuth scopes include ${REQUIRED_SCOPE}"
         fi
     else
-        substep "Not running on GCE (metadata unavailable), skipping IAM check"
+        substep "Not running on GCE (metadata unavailable), skipping scope check"
     fi
 fi
 
