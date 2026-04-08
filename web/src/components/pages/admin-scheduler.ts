@@ -406,7 +406,8 @@ export class ScionPageAdminScheduler extends LitElement {
 
       // Build grove ID -> name/slug lookup map
       if (grovesResponse.ok) {
-        const grovesData = (await grovesResponse.json()) as { id: string; name: string; slug?: string }[];
+        const grovesBody = (await grovesResponse.json()) as { groves: { id: string; name: string; slug?: string }[] };
+        const grovesData = grovesBody.groves ?? [];
         const map = new Map<string, { name: string; slug: string }>();
         for (const g of grovesData) {
           map.set(g.id, { name: g.name, slug: g.slug ?? g.id });
