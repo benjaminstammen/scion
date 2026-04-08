@@ -58,8 +58,8 @@ func Get() string {
 	}
 
 	// Shorten commit hash if it's long
-	if len(commit) > 7 {
-		commit = commit[:7]
+	if len(commit) > 8 {
+		commit = commit[:8]
 	}
 
 	if commit == "" {
@@ -99,8 +99,8 @@ func Short() string {
 		}
 	}
 
-	if len(commit) > 7 {
-		commit = commit[:7]
+	if len(commit) > 8 {
+		commit = commit[:8]
 	}
 
 	if commit == "" {
