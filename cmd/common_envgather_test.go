@@ -20,7 +20,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/GoogleCloudPlatform/scion/pkg/hubclient"
 	"github.com/stretchr/testify/assert"
@@ -212,6 +214,79 @@ func TestStartAgentViaHub_EnvGatherFailureCleansUp(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "env-gather failed")
 	assert.True(t, deleteCalled, "expected provisioning agent to be deleted on env-gather failure")
+}
+
+func TestStartAgentViaHub_GlobalGroveSkipsWorkspaceBootstrap(t *testing.T) {
+	origOutputFormat := outputFormat
+	origTemplateName := templateName
+	origHarnessConfigFlag := harnessConfigFlag
+	origRuntimeBrokerID := runtimeBrokerID
+	defer func() {
+		outputFormat = origOutputFormat
+		templateName = origTemplateName
+		harnessConfigFlag = origHarnessConfigFlag
+		runtimeBrokerID = origRuntimeBrokerID
+	}()
+
+	outputFormat = "json"
+	templateName = ""
+	harnessConfigFlag = "codex"
+	runtimeBrokerID = "broker-1"
+
+	globalDir := t.TempDir()
+	settingsPath := filepath.Join(globalDir, "settings.yaml")
+	require.NoError(t, os.WriteFile(settingsPath, []byte("hub:\n  enabled: true\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(globalDir, "state.yaml"), []byte("syncedAgents: []\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(globalDir, "large-local-file.txt"), []byte("should-not-upload"), 0644))
+
+	groveID := "grove-global"
+	var captured *hubclient.CreateAgentRequest
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/groves/"+groveID:
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":   groveID,
+				"name": "global",
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/groves/"+groveID+"/agents":
+			var req hubclient.CreateAgentRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+			captured = &req
+			json.NewEncoder(w).Encode(&hubclient.CreateAgentResponse{
+				Agent: &hubclient.Agent{
+					ID:                "agent-1",
+					Slug:              "agent-1",
+					Name:              "agent-1",
+					Status:            "running",
+					Phase:             "running",
+					RuntimeBrokerID:   "broker-1",
+					RuntimeBrokerName: "scion",
+					Created:           time.Now().UTC(),
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := hubclient.New(server.URL)
+	require.NoError(t, err)
+
+	hubCtx := &HubContext{
+		Client:    client,
+		Endpoint:  server.URL,
+		GroveID:   groveID,
+		GrovePath: settingsPath,
+		IsGlobal:  true,
+	}
+
+	err = startAgentViaHub(hubCtx, "global-agent", "hello", false, nil)
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	assert.Empty(t, captured.WorkspaceFiles)
 }
 
 // newEnvGatherMockHubServer creates a mock Hub server that handles the SubmitEnv
