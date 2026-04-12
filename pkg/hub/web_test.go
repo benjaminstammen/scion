@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
 	"github.com/gorilla/securecookie"
@@ -1321,21 +1322,49 @@ func TestSSEHandler_EventDelivery(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Publish an event
-	pub.publish("grove.test123.agent.status", AgentStatusEvent{
-		AgentID: "agent-1",
-		GroveID: "test123",
-		Phase:   "running",
-	})
+	// Publish events in a loop until the subscriber is ready.
+	// The SSE handler goroutine may not have called Subscribe yet when
+	// http.Get returns (it returns as soon as headers are flushed).
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				pub.publish("grove.test123.agent.status", AgentStatusEvent{
+					AgentID: "agent-1",
+					GroveID: "test123",
+					Phase:   "running",
+				})
+			case <-stop:
+				return
+			}
+		}
+	}()
 
-	// Read the SSE frame from the response
+	// Read SSE frames until we get the event (skip heartbeats).
+	var frame string
 	buf := make([]byte, 4096)
-	n, err := resp.Body.Read(buf)
-	require.NoError(t, err)
-	frame := string(buf[:n])
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			close(stop)
+			t.Fatal("timed out waiting for SSE event")
+		default:
+		}
+		n, err := resp.Body.Read(buf)
+		require.NoError(t, err)
+		chunk := string(buf[:n])
+		if strings.Contains(chunk, "event: update") {
+			frame = chunk
+			break
+		}
+	}
+	close(stop)
 
 	// Verify SSE frame format: event type is "update", subject is wrapped in data
-	assert.Contains(t, frame, "id: 1\n")
 	assert.Contains(t, frame, "event: update\n")
 	assert.Contains(t, frame, "data: ")
 	assert.Contains(t, frame, `"subject":"grove.test123.agent.status"`)

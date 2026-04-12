@@ -185,7 +185,7 @@ func (s *Server) handleTemplateFileRead(w http.ResponseWriter, r *http.Request, 
 			RuntimeError(w, "Failed to read file from storage")
 			return
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		safeName := filepath.Base(filePath)
 		contentDisposition := mime.FormatMediaType("attachment", map[string]string{"filename": safeName})
@@ -348,7 +348,7 @@ func (s *Server) handleTemplateFileWrite(w http.ResponseWriter, r *http.Request,
 func (s *Server) handleTemplateFileWriteRaw(w http.ResponseWriter, r *http.Request, template *store.Template, filePath string, stor storage.Storage) {
 	ctx := r.Context()
 
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(r.Body, maxUploadFileSize+1))
 	if err != nil {
