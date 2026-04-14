@@ -160,6 +160,12 @@ func (s *Server) resolveGroveWebDAVPath(ctx context.Context, grove *store.Grove)
 		return "", fmt.Errorf("failed to resolve grove providers")
 	}
 
+	// Git groves with no providers have no accessible workspace — the workspace
+	// lives on broker machines and no broker has registered for this grove yet.
+	if len(providers) == 0 {
+		return "", fmt.Errorf("workspace is not available for git-anchored groves without a registered provider")
+	}
+
 	// Check for co-located (embedded) broker with a local path
 	for _, p := range providers {
 		if s.isEmbeddedBroker(p.BrokerID) && p.LocalPath != "" {

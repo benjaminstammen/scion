@@ -651,8 +651,18 @@ func TestGroveWorkspaceWrite_PathTraversalRejected(t *testing.T) {
 	srv, _ := testServer(t)
 	grove, _ := createTestHubNativeGrove(t, srv, "WS Write Traversal")
 
+	// Go's HTTP mux normalizes paths with "../" segments before they reach
+	// the handler (returns 307 Redirect to the cleaned path). To test the
+	// handler's own path validation, call handleGroveWorkspace directly
+	// with a traversal path.
 	body := GroveWorkspaceWriteRequest{Content: "bad"}
-	rec := doRequest(t, srv, http.MethodPut, fmt.Sprintf("/api/v1/groves/%s/workspace/files/../../../etc/passwd", grove.ID), body)
+	bodyBytes, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPut, "/", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.handleGroveWorkspace(rec, req, grove.ID, "../../../etc/passwd")
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
