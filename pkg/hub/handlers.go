@@ -8206,7 +8206,7 @@ func (s *Server) handleExistingAgent(
 
 		// Enrich and return the existing agent.
 		s.enrichAgent(ctx, existingAgent, grove, nil)
-		writeJSON(w, http.StatusCreated, CreateAgentResponse{
+		writeJSON(w, http.StatusOK, CreateAgentResponse{
 			Agent: existingAgent,
 		})
 		return existingAgentStarted
