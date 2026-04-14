@@ -284,6 +284,16 @@ if $FULL_DEPLOY; then
         fi
     fi
 
+    # Install polkit if missing (needed for scion user to restart its own service)
+    if ! dpkg -s polkitd &>/dev/null 2>&1; then
+        echo "  -> Installing polkit..."
+        if ! $NEED_APT_UPDATE; then
+            sudo apt-get update
+            NEED_APT_UPDATE=true
+        fi
+        sudo apt-get install -y polkitd
+    fi
+
     # Install Caddy if missing
     if ! command -v caddy &>/dev/null; then
         echo "  -> Installing Caddy..."
@@ -329,6 +339,7 @@ polkit.addRule(function(action, subject) {
 });
 POLKIT_EOF
     if ! diff -q /tmp/50-scion-hub-restart.rules "$POLKIT_RULE" >/dev/null 2>&1; then
+        sudo mkdir -p "$(dirname "$POLKIT_RULE")"
         sudo mv /tmp/50-scion-hub-restart.rules "$POLKIT_RULE"
         echo "  -> Polkit rule installed (scion user can restart scion-hub)"
     else
