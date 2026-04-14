@@ -250,6 +250,12 @@ func (r *AppleContainerRuntime) Attach(ctx context.Context, id string) error {
 		return fmt.Errorf("agent '%s' is not running (status: %s). Use 'scion start %s' to resume it.", id, a.ContainerStatus, id)
 	}
 
+	// Ensure tmux uses the latest client's terminal size so the session
+	// redraws correctly on attach (handles containers started before the
+	// window-size option was added to session creation).
+	_, _ = runSimpleCommand(ctx, r.Command, "exec", "--user", "scion",
+		a.ContainerID, "tmux", "set-option", "-g", "window-size", "latest")
+
 	return runInteractiveCommand(r.Command, "exec", "-it", "--user", "scion", a.ContainerID, "tmux", "attach", "-t", "scion")
 }
 

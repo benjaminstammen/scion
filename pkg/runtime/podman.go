@@ -342,6 +342,12 @@ func (r *PodmanRuntime) Attach(ctx context.Context, id string) error {
 		return fmt.Errorf("agent '%s' is not running (status: %s). Use 'scion start %s' to resume it.", id, agent.ContainerStatus, id)
 	}
 
+	// Ensure tmux uses the latest client's terminal size so the session
+	// redraws correctly on attach (handles containers started before the
+	// window-size option was added to session creation).
+	_, _ = runSimpleCommand(ctx, r.Command, "exec", "--user", r.ExecUser(),
+		agent.ContainerID, "tmux", "set-option", "-g", "window-size", "latest")
+
 	return runInteractiveCommand(r.Command, "exec", "-it", "--user", r.ExecUser(), agent.ContainerID, "tmux", "attach", "-t", "scion")
 }
 

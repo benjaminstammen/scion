@@ -769,7 +769,7 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) (*corev
 	cmdLine := strings.Join(quotedArgs, " ")
 	// Create session with "agent" window running the harness, plus a "shell" window.
 	tmuxCmd := fmt.Sprintf(
-		"tmux new-session -d -s scion -n agent %s \\; new-window -t scion -n shell \\; select-window -t scion:agent \\; attach-session -t scion",
+		"tmux new-session -d -s scion -n agent %s \\; set-option -g window-size latest \\; new-window -t scion -n shell \\; select-window -t scion:agent \\; attach-session -t scion",
 		cmdLine,
 	)
 	// --- K8s Startup Gate ---
