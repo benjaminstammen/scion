@@ -66,7 +66,7 @@ RUN make prefix=/usr/local all
 RUN make prefix=/usr/local install
 
 # Final Stage
-FROM node:20-slim
+FROM node:24-slim
 USER root
 
 # Remove default node user to avoid UID 1000 collision with host user
@@ -88,6 +88,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libexpat1 \
     zlib1g \
     python3 \
+    python-is-python3 \
+    postgresql-client \
     make \
     g++ \
     man-db \
