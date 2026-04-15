@@ -148,6 +148,17 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin
 
+# Install rwx CLI
+ARG RWX_VERSION=3.12.0
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "${ARCH}" in \
+      amd64) RWX_ARCH='x86_64' ;; \
+      arm64) RWX_ARCH='aarch64' ;; \
+      *) echo "Unsupported architecture: ${ARCH}"; exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/rwx-cloud/rwx/releases/download/v${RWX_VERSION}/rwx-linux-${RWX_ARCH}" -o /usr/local/bin/rwx && \
+    chmod +x /usr/local/bin/rwx
+
 # Setup npm global directory
 RUN mkdir -p /usr/local/share/npm-global
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
