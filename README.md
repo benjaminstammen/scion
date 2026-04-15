@@ -11,6 +11,15 @@ Scion orchestrates "deep agents" (Claude Code, Gemini CLI, Codex, and others) as
 
 Rather than prescribing rigid orchestration patterns, Scion takes a "less is more" approach: agents dynamically learn a CLI tool, letting the models themselves decide how to coordinate among agents. This makes it a rapid prototype testbed for experimenting with multi-agent patterns through natural language prompting. Read more in [Philosophy](https://googlecloudplatform.github.io/scion/philosophy/).
 
+## Fork Notes
+
+This is a customized fork of [GoogleCloudPlatform/scion](https://github.com/GoogleCloudPlatform/scion). Everything not listed here tracks upstream — refer to upstream for canonical docs, issues, and releases.
+
+This fork adds:
+
+- **rwx CLI preinstalled in agent containers.** The [RWX](https://www.rwx.com/) CLI is baked into `core-base`, and `cloud.rwx.com` / `api.rwx.com` are allowlisted in the Claude container's firewall init. Agents can invoke `rwx run .rwx/<name>.yml --wait` directly as a validation step before committing.
+- **Pre-built container images at `ghcr.io/benjaminstammen/*`.** Set `image_registry: ghcr.io/benjaminstammen` in `~/.scion/settings.yaml` to skip local image builds.
+- **Local image build script.** `image-build/scripts/build-local.sh --registry <registry>` produces images directly into the local Docker daemon without buildx or a registry push — useful for iterating on Dockerfile changes.
 
 ## See It in Action
 
