@@ -25,7 +25,6 @@ import (
 
 	"github.com/GoogleCloudPlatform/scion/pkg/api"
 	claudeEmbeds "github.com/GoogleCloudPlatform/scion/pkg/harness/claude"
-	"github.com/GoogleCloudPlatform/scion/pkg/util"
 )
 
 type ClaudeCode struct {
