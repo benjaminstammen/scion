@@ -789,6 +789,15 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 					volumes = finalScionCfg.Volumes
 				}
 			}
+			// Resolve relative volume source paths against the project root
+			// so that grove-level paths like ".scion/allowed-domains" work.
+			projectRoot := filepath.Dir(projectDir)
+			for i := range volumes {
+				src := volumes[i].Source
+				if src != "" && !filepath.IsAbs(src) && !strings.HasPrefix(src, "~") && !strings.HasPrefix(src, "$") {
+					volumes[i].Source = filepath.Join(projectRoot, src)
+				}
+			}
 			// Append shared directory volumes
 			volumes = append(volumes, sharedDirVolumes...)
 			return volumes

@@ -106,6 +106,31 @@ for domain in \
     done < <(echo "$ips")
 done
 
+# Resolve extra domains from a grove-mounted config file.
+# Mount a file at /home/scion/.scion/allowed-domains with one domain per line
+# to allowlist project-specific hosts (e.g. RDS instances) without rebuilding images.
+EXTRA_DOMAINS_FILE="/home/scion/.scion/allowed-domains"
+if [ -f "$EXTRA_DOMAINS_FILE" ]; then
+    echo "Loading extra allowed domains from $EXTRA_DOMAINS_FILE..."
+    while IFS= read -r domain || [ -n "$domain" ]; do
+        domain=$(echo "$domain" | xargs)
+        [ -z "$domain" ] && continue
+        [[ "$domain" == \#* ]] && continue
+        echo "Resolving extra domain $domain..."
+        ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
+        if [ -z "$ips" ]; then
+            echo "WARNING: Failed to resolve extra domain $domain (skipping)"
+            continue
+        fi
+        while read -r ip; do
+            if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                echo "Adding $ip for $domain"
+                ipset add allowed-domains "$ip"
+            fi
+        done < <(echo "$ips")
+    done < "$EXTRA_DOMAINS_FILE"
+fi
+
 # Get host IP from default route
 HOST_IP=$(ip route | grep default | cut -d" " -f3)
 if [ -z "$HOST_IP" ]; then
