@@ -20,6 +20,71 @@ This fork adds:
 - **rwx CLI preinstalled in agent containers.** The [RWX](https://www.rwx.com/) CLI is baked into `core-base`, and `cloud.rwx.com` / `api.rwx.com` are allowlisted in the Claude container's firewall init. Agents can invoke `rwx run .rwx/<name>.yml --wait` directly as a validation step before committing.
 - **Pre-built container images at `ghcr.io/benjaminstammen/*`.** Set `image_registry: ghcr.io/benjaminstammen` in `~/.scion/settings.yaml` to skip local image builds.
 - **Local image build script.** `image-build/scripts/build-local.sh --registry <registry>` produces images directly into the local Docker daemon without buildx or a registry push — useful for iterating on Dockerfile changes.
+- **Default harness is Claude** (upstream defaults to Gemini).
+- **Node 24, python, postgresql-client** preinstalled in agent containers.
+
+### Fork Quickstart
+
+1. **Install the CLI** (requires Go):
+
+   ```bash
+   go install github.com/benjaminstammen/scion/cmd/scion@latest
+   ```
+
+2. **Initialize your machine** (one-time):
+
+   ```bash
+   scion init --machine
+   ```
+
+   Edit `~/.scion/settings.yaml` and set your image registry:
+
+   ```yaml
+   image_registry: ghcr.io/benjaminstammen
+   ```
+
+3. **Set up Claude authentication.** Generate a long-lived OAuth token from your Claude subscription:
+
+   ```bash
+   claude setup-token
+   ```
+
+   Export it in your shell profile (`.zshrc`, `.bashrc`, etc.):
+
+   ```bash
+   export CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..."
+   ```
+
+   Scion auto-detects this token. No `ANTHROPIC_API_KEY` needed.
+
+4. **Set your git identity for agents.** Edit `~/.scion/templates/default/home/.gitconfig`:
+
+   ```ini
+   [user]
+       name = Your Name
+       email = you@example.com
+   [safe]
+       directory = /workspace
+   ```
+
+5. **Initialize a project grove and start an agent:**
+
+   ```bash
+   cd my-project
+   scion init
+   scion start my-feature "Implement the login page" --attach
+   ```
+
+   The agent gets its own container, worktree, and branch. Use `scion list` to see running agents, `scion attach <name>` to reconnect, and `scion delete <name>` to clean up.
+
+6. **Use sibling worktrees** (optional). If you prefer worktrees as sibling directories rather than inside `.scion/agents/`:
+
+   ```bash
+   git worktree add ../my-feature -b my-feature
+   scion start my-feature "task description"
+   ```
+
+   Scion auto-detects the existing worktree and mounts it.
 
 ## See It in Action
 

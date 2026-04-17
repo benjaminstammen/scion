@@ -180,20 +180,10 @@ func (c *ClaudeCode) provisionClaudeJSON(agentHome, agentWorkspace string) error
 		return err
 	}
 
+	// The workspace volume always mounts to /workspace in the container,
+	// regardless of where the worktree lives on the host. Pre-trust that
+	// path so Claude Code skips the trust dialog.
 	containerWorkspace := "/workspace"
-	// Derive the container workspace path from the agent directory structure.
-	// The host path is like .../grove/.scion/agents/<name>/workspace and maps
-	// to /repo-root/.scion/agents/<name>/workspace inside the container.
-	// Use the .scion/agents/ segment as a reliable anchor rather than
-	// util.RepoRoot() which depends on the broker's working directory.
-	if idx := strings.Index(agentWorkspace, "/.scion/agents/"); idx >= 0 {
-		containerWorkspace = "/repo-root" + agentWorkspace[idx:]
-	} else if repoRoot, err := util.RepoRoot(); err == nil {
-		relWorkspace, err := filepath.Rel(repoRoot, agentWorkspace)
-		if err == nil && !strings.HasPrefix(relWorkspace, "..") && relWorkspace != "." {
-			containerWorkspace = filepath.Join("/repo-root", relWorkspace)
-		}
-	}
 
 	// Update projects map
 	projects, ok := claudeCfg["projects"].(map[string]interface{})
